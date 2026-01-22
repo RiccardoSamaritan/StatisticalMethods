@@ -1,0 +1,210 @@
+---
+title: "BikeSharingBivariate"
+author: "Lorenzo Tonet"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/STORAGE/UNI/MAGISTRALE/STAT METHODS/FINAL PROJECT/BikeSharing")
+
+library(corrplot)
+library(patchwork)
+library(ggplot2)
+
+library(ggridges)
+```
+
+```{r summary}
+df = read.csv("hour.csv", header = TRUE)
+summary(df)
+```
+## Correlation matrix
+```{r}
+library(corrplot)
+
+cor_data <- cor(df[, c("temp", "atemp", "hum", "windspeed", "cnt")],
+                use = "complete.obs")
+
+corrplot(cor_data,
+         method = "color",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.srt = 45,
+         diag = TRUE)
+
+```
+It is possible to see how temp and atemp are (not surprisingly) highly correlated. Another important result is the fact that the temperature is correlated with the rentals count. For categorical and cyclic variables other test are needed.
+
+```{r summary}
+df$season_f = factor(df$season, labels = c("Spring", "Summer", "Autumn","Winter"))
+df$weather_f = factor(df$weathersit, labels = c("Clear", "Cloudy/Mist", "Light Snow/Rain", "Heavy Rain"))
+df$workday_f = factor(df$workingday, labels = c("Weekend/Holiday", "Working day"))
+df$hr_f = factor(df$hr)
+
+```
+
+```{r}
+# True temperature
+ggplot(df, aes(x = temp, y = cnt)) +
+  geom_point(alpha = 0.2) +
+  labs(
+    title = "True Temperature vs Rentals",
+    x = "Temp. (norm)",
+    y = "Rental counts"
+  ) +
+  theme_minimal()
+
+# Feeling temperature
+ggplot(df, aes(x = atemp, y = cnt)) +
+  geom_point(alpha = 0.2) +
+  labs(
+    title = "Feeling Temperature vs Rentals",
+    x = "Temp. (norm)",
+    y = "Rental counts"
+  ) +
+  theme_minimal()
+
+```
+It is possible to see that there are two bands in the the feeling temperature where rental counts drop to lower value. This can suggest the interaction with other unknown variables. Due to the fact that temperatures are normalized between 0 and 1 those results are difficult to interpret. 
+```{r}
+ggplot(df, aes(x = temp, y = atemp)) +
+  geom_point(alpha = 0.2) +
+  labs(
+    title = "Temperature vs Feeling Temperature",
+    x = "Temp. (norm)",
+    y = "Feeling Temp."
+  ) +
+  theme_minimal()
+```
+As we could imagine, between temperature and feeling temperature there is a relation highly linear.
+
+```{r}
+
+ggplot(df, aes(x = hum, y = cnt)) +
+  geom_point(alpha = 0.2) +
+  labs(
+    title = "Temperature vs Feeling Temperature",
+    x = "Temp. (norm)",
+    y = "Feeling Temp."
+  ) +
+  theme_minimal()
+
+```
+A small group of observations is located at the 0.0 coordinate. This may indicate potential sensor malfunctions or outliers representing extremely dry days with very low rental activity.
+
+```{r}
+ggplot(df, aes(x = season_f, y = cnt)) +
+  geom_boxplot(fill = "orange", outlier.shape = NA) +
+  labs(
+    title = "Rentals by season",
+    x = "Season",
+    y = "cnt"
+  ) +
+  theme_minimal()
+```
+The boxplot reveals that Autumn is the peak season for rentals, showing both the highest median and the highest overall volume. Spring consistently records the lowest rental counts with minimal variability, this can be caused by the interaction with other variables, like holidays or something else. While Summer and Winter show similar median levels, Summer exhibits a higher potential for peak demand.
+```{r}
+ggplot(df, aes(x = factor(mnth), y = cnt)) +
+  geom_boxplot(width = 0.15, fill = "orange", outlier.shape = NA) +
+  labs(
+    title = "Rentals by month",
+    x = "Month",
+    y = "cnt"
+  ) +
+  theme_minimal()
+ggplot(df, aes(x = cnt, y = factor(mnth))) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  scale_x_continuous(limits = c(0, NA)) +
+  labs(
+    title = "Distribution of rentals by month",
+    x = "cnt",
+    y = "Month"
+  ) +
+  theme_minimal()
+```
+```{r}
+
+prop_registered <- aggregate(cbind(registered, cnt) ~ mnth, data = df, sum)
+prop_registered$prop <- prop_registered$registered / prop_registered$cnt
+
+ggplot(prop_registered, aes(x = factor(mnth), y = prop)) +
+  geom_col(fill = "steelblue") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Proportion of registered users by month",
+    x = "Month",
+    y = "Registered / Total rentals"
+  ) +
+  theme_minimal()
+```
+During the summer days the proportion of registered users drops. The maximum is in january exactly at the beginning of the year.
+
+```{r}
+ggplot(df, aes(x = weather_f, y = cnt)) +
+  geom_boxplot(fill = "orange", outlier.shape = NA) +
+  labs(
+    title = "Rentals by weather",
+    x = "Weather condition",
+    y = "cnt"
+  ) +
+  theme_minimal()
+```
+As we can imagine, worse is the weather, less rentals there will be.
+```{r}
+
+hourly_avg_work$daytype <- "Working day"
+hourly_avg_week$daytype <- "Weekend / Holiday"
+
+hourly_avg <- rbind(hourly_avg_work, hourly_avg_week)
+
+# plot
+ggplot(hourly_avg, aes(x = hr, y = cnt, color = daytype)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  labs(
+    title = "Average rentals by hour",
+    x = "Hour",
+    y = "Average cnt in a day",
+    color = ""
+  ) +
+  theme_minimal()
+
+
+```
+
+
+```{r}
+hourly_avg_summer <- aggregate(cnt ~ hr, data = df[df$season_f == "Summer",], FUN = mean)
+hourly_avg_winter <- aggregate(cnt ~ hr, data = df[df$season_f == "Winter",], FUN = mean)
+hourly_avg_spring <- aggregate(cnt ~ hr, data = df[df$season_f == "Spring",], FUN = mean)
+hourly_avg_autumn <- aggregate(cnt ~ hr, data = df[df$season_f == "Autumn",], FUN = mean)
+
+hourly_avg_summer$season <- "Summer"
+hourly_avg_winter$season <- "Winter"
+hourly_avg_spring$season <- "Spring"
+hourly_avg_autumn$season <- "Autumn"
+
+hourly_avg <- rbind(
+  hourly_avg_summer,
+  hourly_avg_winter,
+  hourly_avg_spring,
+  hourly_avg_autumn
+)
+
+
+ggplot(hourly_avg, aes(x = hr, y = cnt, color = season)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  labs(
+    title = "Average rentals by hour and season",
+    x = "Hour",
+    y = "Average cnt",
+    color = "Season"
+  ) +
+  theme_minimal()
+
+```
+The data suggests that while commuting habits (hourly peaks) remain constant, the overall volume is heavily dictated by the time of year and weather conditions. Autumn provides the "sweet spot" for rentals, while Spring (or the early months of the year) represents the period of lowest engagement.
+
