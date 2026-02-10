@@ -1,0 +1,66 @@
+---
+title: "BikeSharing_GAM"
+author: "Lorenzo Tonet, Giovanni Oro, Riccardo Samaritan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/STORAGE/UNI/MAGISTRALE/STAT METHODS/FINAL PROJECT/BikeSharing")
+
+library(corrplot)
+library(patchwork)
+library(ggplot2)
+library(mgcv)
+library(ggridges)
+library(MASS)
+```
+
+
+```{r data_import}
+df = read.csv("hour.csv")
+```
+
+```{r summary}
+df$season_f = factor(df$season, labels = c("Spring", "Summer", "Autumn","Winter"))
+df$weather_f = factor(df$weathersit, labels = c("Clear", "Cloudy/Mist", "Light Snow/Rain", "Heavy Rain"))
+df$workday_f = factor(df$workingday, labels = c("Weekend/Holiday", "Working day"))
+df$hr_f = factor(df$hr)
+df$weekday_f = factor(df$weekday)
+df$yr_f = factor(df$yr, labels = c("2011","2012"))
+```
+
+```{r train test split}
+set.seed(6767)
+
+train_id = sample(1:nrow(df), 0.75*nrow(df))
+train = df[train_id, ]
+test  = df[-train_id, ]
+```
+
+
+
+```{r baseline}
+baseline_LineReg = lm(cnt ~ 
+      hr+
+      season_f +
+      workday_f +
+      weather_f +
+      temp +
+      yr_f +
+      hum +
+      windspeed,
+      data = df)
+
+summary(baseline_LineReg)
+```
+
+
+
+```{r summary}
+GAM1 = gam(cnt ~ s(hr, bs = "cc") + yr_f + season_f+ temp + workday_f + weather_f + workday_f * weather_f, family = poisson, data = df)
+summary(GAM1)
+```
+
+

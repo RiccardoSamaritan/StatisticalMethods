@@ -1,0 +1,208 @@
+---
+title: "BikeSharing_PoisModel"
+author: "Lorenzo Tonet, Giovanni Oro, Riccardo Samaritan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/STORAGE/UNI/MAGISTRALE/STAT METHODS/FINAL PROJECT/BikeSharing")
+
+library(corrplot)
+library(patchwork)
+library(ggplot2)
+library(mgcv)
+library(ggridges)
+library(MASS)
+```
+
+
+```{r data_import}
+df = read.csv("hour.csv")
+```
+
+```{r summary}
+df$season_f = factor(df$season, labels = c("Spring", "Summer", "Autumn","Winter"))
+df$weather_f = factor(df$weathersit, labels = c("Clear", "Cloudy/Mist", "Light Snow/Rain", "Heavy Rain"))
+df$workday_f = factor(df$workingday, labels = c("Weekend/Holiday", "Working day"))
+df$hr_f = factor(df$hr)
+df$weekday_f = factor(df$weekday)
+df$yr_f = factor(df$yr, labels = c("2011","2012"))
+```
+
+```{r train test split}
+set.seed(6767)
+
+train_id = sample(1:nrow(df), 0.75*nrow(df))
+train = df[train_id, ]
+test  = df[-train_id, ]
+```
+
+```{r baseline}
+baseline_LineReg = lm(cnt ~ 
+      hr +
+      season_f +
+      workday_f +
+      weather_f +
+      temp +
+      yr_f +
+      hum +
+      windspeed,
+      data = train)
+
+summary(baseline_LineReg)
+```
+
+
+```{r residual_plot}
+plot(baseline_LineReg)
+```
+from the qq plot it is possible to see the non-normality of residuals and a strong asymmetry.Looking at the third plot, it is possible to see a grow trend in the standardized residuals. it can possibly help to address an hypothesis of heteroschedasticity.
+---
+
+```{r poisson_distribution test}
+lambda_hat <- mean(df$cnt)
+n <- nrow(df)
+
+breaks <- c(0, 50, 100, 150, 200, 300, 500, Inf)
+
+obs <- table(cut(df$cnt, breaks = breaks, right = FALSE))
+
+p_exp <- numeric(length(breaks) - 1)
+
+for(i in 1:(length(breaks) - 1)){
+  a <- breaks[i]
+  b <- breaks[i+1] - 1
+  
+  if(is.infinite(b)){
+    p_exp[i] <- ppois(a - 1, lambda_hat, lower.tail = FALSE)
+  } else {
+    p_exp[i] <- ppois(b, lambda_hat) - ppois(a - 1, lambda_hat)
+  }
+}
+exp <- n * p_exp
+
+data.frame(class = levels(cut(df$cnt, breaks = breaks, right = FALSE)),
+           observed = as.numeric(obs),
+           expected = exp)
+
+# 7. Test chi-quadrato
+chisq.test(x = as.numeric(obs), p = p_exp)
+```
+
+```{r poisson model}
+mod_pois = glm(cnt ~ 
+      hr_f +
+      season_f +
+      workday_f +
+      weather_f +
+      temp +
+      yr_f +
+      hum +
+      windspeed +
+      hr_f * workday_f,
+      family = poisson, data = train)
+
+summary(mod_pois)
+
+```
+
+```{r diagnostic_plots}
+plot(mod_pois)
+```
+Diagnostic plots for the Poisson model reveal strong overdispersion. Residuals display a particular shape and asymmetry, the Q-Q plot shows heavy right-tail deviations indicating underestimation of large counts, and the Scale-Location plot confirms increasing variance with the mean. --> use different model.
+
+```{r overdispersion}
+deviance(mod_pois) / df.residual(mod_pois) #significantly >0 --> overdispersion
+```
+
+```{r anova test}
+anova(mod_pois, test = "LRT")
+```
+
+```{r nested models}
+mod_pois_2 = glm(cnt ~ 
+      hr_f +
+      season_f +
+      yr_f +
+      workday_f +
+      weather_f +
+      temp +
+      hr_f * workday_f,
+      family = poisson, data = train) # no hum and windspeed (really low effect)
+
+mod_pois_3 = glm(cnt ~ 
+      hr_f +
+      season_f +
+      workday_f +
+      weather_f +
+      temp +
+      hr_f * workday_f,
+      family = poisson, data = train) # no year (only 2 years)
+
+mod_pois_no_interactions = glm(cnt ~ 
+      hr_f +
+      season_f +
+      yr_f +
+      workday_f +
+      weather_f +
+      temp,
+      family = poisson, data = train)
+
+```
+
+```{r AIC of nested models}
+model_list <- list(
+  mod_pois,
+  mod_pois_2,
+  mod_pois_3,
+  mod_pois_no_interactions
+)
+
+model_names <- c(
+  "mod_pois",
+  "mod_pois_2",
+  "mod_pois_3",
+  "mod_pois_no_interactions"
+)
+
+tab_models <- data.frame(
+  Model = model_names,
+  df_resid = sapply(model_list, function(x) df.residual(x)),
+  AIC = sapply(model_list, AIC)
+)
+
+tab_models[order(tab_models$AIC), ]
+```
+we can clearly see that interactions are fundamentals. hum and windspeed not really, yr can be useful
+
+```{r final model}
+mod_pois_2 = glm(cnt ~ 
+      hr_f +
+      season_f +
+      yr_f +
+      workday_f +
+      weather_f +
+      temp +
+      hr_f * workday_f,
+      family = poisson, data = train) 
+```
+
+
+
+----------------------------------------------
+
+
+```{r quasi poisson}
+mod_quasi_pois <- glm(
+  cnt ~ hr_f + season_f + workday_f + weather_f + temp + yr_f + hr_f*workday_f,
+  family = quasipoisson(link = "log"),
+  data = train
+)
+summary(mod_quasi_pois)
+```
+
+```{r AIC}
+AIC(mod_pois, mod_pois_2, mod_pois_3, mod_pois_no_interactions)
+```
