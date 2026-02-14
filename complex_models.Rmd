@@ -1,0 +1,230 @@
+---
+title: "Analisi Avanzata del Noleggio Biciclette"
+author: "Giovanni Oro"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    highlight: tango
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 7)
+library(mgcv)
+library(earth)
+library(rpart)
+library(rpart.plot)
+library(ggplot2)
+library(dplyr)
+library(knitr)
+```
+```{r data_import}
+# Importazione del dataset bike sharing
+df = read.csv("hour.csv")
+
+# Creazione variabili categoriche con etichette descrittive
+df$season_f = factor(df$season, labels = c("Spring", "Summer", "Autumn","Winter"))
+df$weather_f = factor(df$weathersit, labels = c("Clear", "Cloudy/Mist", 
+                                                  "Light Snow/Rain", "Heavy Rain"))
+df$workday_f = factor(df$workingday, labels = c("Weekend/Holiday", "Working day"))
+df$hr_f = factor(df$hr)
+df$weekday_f = factor(df$weekday)
+df$yr_f = factor(df$yr, labels = c("2011","2012"))
+
+cat("Dataset dimensions:", dim(df), "\n")
+cat("Variables:", names(df), "\n")
+
+set.seed(6767)
+
+# Split 75% training, 25% test
+train_id = sample(1:nrow(df), 0.75*nrow(df))
+train_data = df[train_id, ]
+test_data  = df[-train_id, ]
+```
+
+
+# Introduzione e Target
+
+L'obiettivo della nostra analisi è modellare **cnt** (numero totale di noleggi). Trattandosi di dati di conteggio, la sfida principale è catturare la non-linearità delle ore del giorno e l'interazione tra meteo e abitudini dei pendolari.
+
+# 1. Feature Selection e Model Comparison (GAM)
+
+In questa fase decidiamo quali variabili includere. Come suggerito dal materiale del corso, usiamo l'**AIC** per bilanciare bontà del fit e parsimonia.
+
+## 1.1 Selezione dei Termini (AIC)
+
+Confrontiamo tre modelli con complessità crescente:
+
+- **M1 (Poisson)**: Effetti lineari semplici.
+- **M2 (Poisson Smooth)**: Introduciamo le spline per ora (hr) e temperatura (temp).
+- **M3 (Poisson Interaction)**: Aggiungiamo l'interazione tra ora e giorno lavorativo.
+```{r model-selection}
+# GAM base con effetti lineari (Poisson) - baseline senza smooth terms
+gam_1 <- gam(cnt ~ hr + temp + workday_f + weather_f, family = poisson, data = train_data)
+
+# GAM con spline smooth per hr e temp (Poisson) - cattura non-linearità
+gam_2 <- gam(cnt ~ s(hr, bs = "cc", k = 24) + s(temp) + workday_f + weather_f, family = poisson, data = train_data)
+
+# GAM con interazione hr-workday (Poisson) - effetto ora dipende da tipo giorno
+gam_3 <- gam(cnt ~ s(hr, bs = 'cc', by = workingday) + s(temp) + weather_f, family = poisson, data = train_data)
+
+# GAM Negative Binomial con interazione - gestisce overdispersion nei count data
+gam_nb <- gam(cnt ~ s(hr, bs = 'cc', by = workingday) + s(temp) + weather_f, family = nb(), data = train_data)
+
+# Tabella AIC
+aic_results <- data.frame(
+  Modello = c("Lineare", "Smooth", "Smooth + Interazione", "NB Smooth + Interazione"),
+  AIC = c(AIC(gam_1), AIC(gam_2), AIC(gam_3), AIC(gam_nb))
+)
+kable(aic_results, caption = "Confronto AIC (Valori più bassi indicano modelli migliori)")
+```
+
+## 1.2 Test ANOVA (Analisi della Varianza)
+
+Per confermare che il modello più complesso (M3) sia effettivamente necessario, eseguiamo un test ANOVA.
+```{r anova-test}
+# Test formale per modelli nidificati
+anova(gam_2, gam_3, test = "Chisq")
+```
+
+**Interpretazione**: Il p-value estremamente basso ci dice che l'interazione è statisticamente significativa. Non possiamo farne a meno.
+
+# 2. Analisi Visiva dei Modelli
+
+## 2.1 Diagnostica dei Residui (Linear Model)
+
+non xe ancora full
+```{r diagnostic-lm}
+# Linear Model classico con tutti i factor - baseline per confronto
+lm_full <- lm(cnt ~ hr + temp + workday_f + weather_f + season_f + yr_f, data = train_data)
+par(mfrow = c(2, 2))
+plot(lm_full, main = "Diagnostica LM")
+```
+**Nota Metodologica**: La violazione dell'assunzione di normalità è comune con dati di conteggio. I **GAM con famiglia Poisson/NB** sono più appropriati poiché non richiedono normalità dei residui.
+
+
+
+## 2.2 Plot degli Effetti Smooth (GAM)
+
+Visualizziamo come cambiano i noleggi al variare di ora e temperatura.
+```{r gam-effects}
+# GAM NB con spline ciclica per hr - smooth ciclico per pattern orario 24h
+gam_final_ciclica <- gam(cnt ~ s(hr, bs = 'cc') + weather_f, family = nb(), data = train_data)
+
+# GAM NB senza vincolo ciclico - spline standard per confronto
+gam_final_no <- gam(cnt ~ s(hr) + weather_f, family = nb(), data = train_data)
+
+# Summary modello con spline ciclica
+summary(gam_final_ciclica)
+
+par(mfrow = c(1, 2))
+plot(gam_final_ciclica, select = 1, main = "Spline Ciclica (hr)")
+plot(gam_final_no, select = 1, main = "Effetto Spline")
+```
+
+## 2.3 Visualizzazione dell'Interazione 3D
+
+```{r 3d-interaction}
+# GAM NB con interazione hr-workday per superficie 3D - visualizza pattern differenziati
+gam_interaction <- gam(cnt ~ s(hr, bs = 'cc', k = 24, by = workday_f) + 
+                        s(temp) + weather_f, 
+                       family = nb(), data = train_data)
+
+vis.gam(gam_interaction, view = c("hr", "temp"), 
+        plot.type = "persp", 
+        theta = 140, phi = 30, color = "terrain",
+        main = "Superficie di Risposta: Ora vs Temperatura")
+```
+
+# 3. Modelli Alternativi e Machine Learning
+
+## 3.1 MARS (Selezione Automatica)
+
+MARS identifica i nodi critici delle variabili. gpt????
+```{r mars-model}
+# MARS con degree=2 - Multivariate Adaptive Regression Splines per interazioni automatiche
+mars_model <- earth(cnt ~ hr + temp + workday_f + weather_f + season_f, data = train_data, degree = 2)
+
+# Summary del modello MARS
+summary(mars_model)
+
+# Plot della selezione dei termini
+plot(mars_model, which = 1, main = "Selezione Termini MARS (GCV)")
+```
+
+# 4. Valutazione Finale su Test Set (Metrics)
+
+Confrontiamo tutti i modelli su dati mai visti (Test Set) usando MSE, RMSE e R².
+```{r final-evaluation}
+# Funzione calcolo metriche
+calc_metrics <- function(actual, pred) {
+  mse <- mean((actual - pred)^2)
+  rmse <- sqrt(mse)
+  r2 <- 1 - (sum((actual - pred)^2) / sum((actual - mean(actual))^2))
+  return(c(MSE = mse, RMSE = rmse, R2 = r2))
+}
+
+# Predizioni su test set per tutti i modelli
+p_lm   <- predict(lm_full, test_data)
+p_gam1 <- predict(gam_1, test_data, type = "response")
+p_gam2 <- predict(gam_2, test_data, type = "response")
+p_gam3 <- predict(gam_3, test_data, type = "response")
+p_gam_nb <- predict(gam_nb, test_data, type = "response")
+p_gam_ciclica <- predict(gam_final_ciclica, test_data, type = "response")
+p_gam_no_ciclica <- predict(gam_final_no, test_data, type = "response")
+p_gam_interaction <- predict(gam_interaction, test_data, type = "response")
+p_mars <- predict(mars_model, test_data)
+
+# Tabella Comparativa con TUTTI i modelli creati
+comparison <- rbind(
+  "Linear Model" = calc_metrics(test_data$cnt, p_lm),
+  "GAM (Lineare Poisson)" = calc_metrics(test_data$cnt, p_gam1),
+  "GAM (Smooth Poisson)" = calc_metrics(test_data$cnt, p_gam2),
+  "GAM (Smooth + Interaction Poisson)" = calc_metrics(test_data$cnt, p_gam3),
+  "GAM (NB Interaction)" = calc_metrics(test_data$cnt, p_gam_nb),
+  "GAM (NB Ciclica)" = calc_metrics(test_data$cnt, p_gam_ciclica),
+  "GAM (NB No Ciclica)" = calc_metrics(test_data$cnt, p_gam_no_ciclica),
+  "GAM (NB 3D Interaction)" = calc_metrics(test_data$cnt, p_gam_interaction),
+  "MARS"         = calc_metrics(test_data$cnt, p_mars)
+)
+
+kable(round(comparison, 3), caption = "Performance Finali sul Test Set")
+```
+
+# 5. Visualizzazione Predizioni vs Realtà
+```{r predictions-plot}
+test_subset <- test_data[1:150, ]
+
+# Crea le predizioni
+pred_gam_nb <- predict(gam_nb, test_subset, type = "response")
+pred_gam_interaction <- predict(gam_interaction, test_subset, type = "response")
+pred_mars <- as.numeric(predict(mars_model, test_subset))
+
+# Crea dataframe in formato wide
+plot_data <- data.frame(
+  Time = 1:150,
+  Reale = test_subset$cnt,
+  GAM_NB = as.numeric(pred_gam_nb),
+  GAM_Interaction = as.numeric(pred_gam_interaction),
+  MARS = pred_mars
+)
+
+# Reshape in formato long per ggplot
+library(tidyr)
+plot_long <- pivot_longer(plot_data, 
+                          cols = -Time, 
+                          names_to = "Modello", 
+                          values_to = "Valore")
+
+# Plot
+ggplot(plot_long, aes(x = Time, y = Valore, color = Modello, linetype = Modello)) +
+  geom_line(size = 0.8) +
+  scale_color_manual(values = c("Reale" = "black", "GAM_NB" = "blue", 
+                                 "GAM_Interaction" = "green", "MARS" = "orange")) +
+  scale_linetype_manual(values = c("Reale" = "solid", "GAM_NB" = "dashed", 
+                                    "GAM_Interaction" = "dotdash", "MARS" = "longdash")) +
+  labs(title = "Confronto Serie Temporale (Primi 150 record del Test)", 
+       y = "cnt", x = "Time") +
+  theme_minimal()
+```
