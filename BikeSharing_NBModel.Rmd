@@ -17,7 +17,6 @@ library(ggridges)
 library(MASS)
 ```
 
-
 ```{r data_import}
 df = read.csv("hour.csv")
 ```
@@ -29,7 +28,12 @@ df$workday_f = factor(df$workingday, labels = c("Weekend/Holiday", "Working day"
 df$hr_f = factor(df$hr)
 df$weekday_f = factor(df$weekday)
 df$yr_f = factor(df$yr, labels = c("2011","2012"))
+
+levels(df$weather_f)[levels(df$weather_f) == "Heavy Rain"] = "Light Snow/Rain"
+df$weather_f = droplevels(df$weather_f)
+table(df$weather_f)
 ```
+
 
 ```{r train test split}
 set.seed(6767)
@@ -50,7 +54,7 @@ baseline_LineReg = lm(cnt ~
       yr_f +
       hum +
       windspeed,
-      data = df)
+      data = train)
 
 summary(baseline_LineReg)
 ```
@@ -66,30 +70,58 @@ mod_nb_full = glm.nb(cnt ~
       temp +
       hum +
       windspeed +
-      season_f*weather_f
+      season_f*weather_f +
       hr_f*workday_f,
       data = train)
 
-summary(mod_nb)
+summary(mod_nb_full)
 ```
 
 ```{r dispersion in nb}
-deviance(mod_nb) / df.residual(mod_nb) # close to 1 --> good
+deviance(mod_nb_full) / df.residual(mod_nb_full) # close to 1 --> good
 ``` 
 
 ```{r negative_binomial_reg_best_poiss}
-mod_nb = glm.nb(cnt ~ 
+mod_nb_hr_working = glm.nb(cnt ~ 
       hr_f +
       season_f +
       yr_f +
       workday_f +
       weather_f +
-      temp,
-      data = df)
+      temp +
+      hr_f*workday_f,
+      data = train)
 
-summary(mod_nb)
+mod_nb_season_weather = glm.nb(cnt ~ 
+      hr_f +
+      season_f +
+      yr_f +
+      workday_f +
+      weather_f +
+      temp +
+      season_f*weather_f,
+      data = train)
+
+mod_nb_no_interactions = glm.nb(cnt ~ 
+      hr_f +
+      season_f +
+      yr_f +
+      workday_f +
+      weather_f +
+      temp + 
+      hum +
+      windspeed,
+      data = train)
+
 ```
 
 ```{r dispersion in nb}
 deviance(mod_nb) / df.residual(mod_nb) # close to 1 --> good
 ``` 
+```{r aic}
+AIC(mod_nb_full, mod_nb_hr_working, mod_nb_season_weather, mod_nb_no_interactions)
+```
+```{r nested model test}
+anova(mod_nb_hr_working, mod_nb_full)
+```
+

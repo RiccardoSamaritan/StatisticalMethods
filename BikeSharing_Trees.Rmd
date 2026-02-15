@@ -15,6 +15,9 @@ library(ggplot2)
 library(mgcv)
 library(ggridges)
 library(MASS)
+library(rpart)
+library(rpart.plot)
+
 ```
 
 
@@ -29,6 +32,11 @@ df$workday_f = factor(df$workingday, labels = c("Weekend/Holiday", "Working day"
 df$hr_f = factor(df$hr)
 df$weekday_f = factor(df$weekday)
 df$yr_f = factor(df$yr, labels = c("2011","2012"))
+
+
+levels(df$weather_f)[levels(df$weather_f) == "Heavy Rain"] = "Light Snow/Rain"
+df$weather_f = droplevels(df$weather_f)
+table(df$weather_f)
 ```
 
 ```{r train test split}
@@ -52,4 +60,88 @@ baseline_LineReg = lm(cnt ~
       data = df)
 
 summary(baseline_LineReg)
+```
+
+```{r tree}
+tree_model <- rpart(cnt ~ 
+      hr_f +
+      season_f +
+      workday_f +
+      weather_f +
+      temp +
+      yr_f +
+      hum +
+      windspeed,
+      data = train,
+      method = "anova",
+      control = rpart.control(cp = 0.001, minsplit = 10, maxdepth = 20))
+
+rpart.plot(tree_model, type = 5, extra = 100, fallen.leaves = TRUE)
+
+```
+
+```{r pruning}
+printcp(tree_model)
+plotcp(tree_model)
+
+best_cp = tree_model$cptable[which.min(tree_model$cptable[,"xerror"]), "CP"]
+
+pruned_tree = prune(tree_model, cp = best_cp)
+
+rpart.plot(pruned_tree, type = 2, extra = 101, fallen.leaves = FALSE)
+```
+```{r conftonto}
+
+mod_nb_hr_working = glm.nb(cnt ~ 
+      hr_f +
+      season_f +
+      yr_f +
+      workday_f +
+      weather_f +
+      temp +
+      hr_f*workday_f,
+      data = train)
+
+pred_nb = predict.glm(mod_nb_hr_working,newdata = test,type = "response")
+pred_tree <- predict(tree_model, newdata = test)
+pred_pruned_tree = predict(pruned_tree, newdata = test)
+
+# RMSE
+rmse_nb = sqrt(mean((test$cnt - pred_nb)^2))
+rmse_tree <- sqrt(mean((test$cnt - pred_tree)^2))
+rmse_pruned_tree <- sqrt(mean((test$cnt - pred_pruned_tree)^2))
+pred_lm <- predict(baseline_LineReg, newdata = test)
+rmse_lm <- sqrt(mean((test$cnt - pred_lm)^2))
+
+rmse_lm
+rmse_tree
+rmse_pruned_tree
+rmse_nb
+
+```
+
+
+```{r random forest}
+library(randomForest)
+
+rf_model <- randomForest(cnt ~ 
+      hr_f +
+      hr_f +
+      season_f +
+      workday_f +
+      weather_f +
+      temp +
+      yr_f +
+      hum +
+      windspeed,
+      data = train,
+      ntree = 300,      # numero di alberi
+      mtry = 3,         # variabili candidate a ogni split
+      importance = TRUE
+)
+pred_rf <- predict(rf_model, newdata = test)
+
+rmse_rf <- sqrt(mean((test$cnt - pred_rf)^2))
+rmse_rf
+
 ```

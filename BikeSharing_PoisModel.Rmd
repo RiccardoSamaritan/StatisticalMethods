@@ -29,6 +29,10 @@ df$workday_f = factor(df$workingday, labels = c("Weekend/Holiday", "Working day"
 df$hr_f = factor(df$hr)
 df$weekday_f = factor(df$weekday)
 df$yr_f = factor(df$yr, labels = c("2011","2012"))
+
+levels(df$weather_f)[levels(df$weather_f) == "Heavy Rain"] = "Light Snow/Rain"
+df$weather_f = droplevels(df$weather_f)
+table(df$weather_f)
 ```
 
 ```{r train test split}
