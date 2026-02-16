@@ -165,7 +165,7 @@ get_metrics <- function(model, data, target_col) {
 }
 
 # Calcolo metriche per entrambi i modelli
-metrics_best <- get_metrics(gam_interaction_best, test_data, "cnt")
+metrics_best <- get_metrics(gam_interaction, test_data, "cnt")
 metrics_year <- get_metrics(gam_interaction_year, test_data, "cnt")
 
 # Creazione tabella di confronto
@@ -337,3 +337,4 @@ new_data <- data.frame(
 predizione_test <- predict(gam_interaction_year, new_data, type = "response")
 print(predizione_test)
 ```
+
