@@ -35,7 +35,7 @@ df$yr_f = factor(df$yr, labels = c("2011","2012"))
 cat("Dataset dimensions:", dim(df), "\n")
 cat("Variables:", names(df), "\n")
 
-set.seed(6767)
+set.seed(6868)
 
 # Split 75% training, 25% test
 train_id = sample(1:nrow(df), 0.75*nrow(df))
@@ -61,16 +61,20 @@ Confrontiamo tre modelli con complessità crescente:
 - **M3 (Poisson Interaction)**: Aggiungiamo l'interazione tra ora e giorno lavorativo.
 ```{r model-selection}
 # GAM base con effetti lineari (Poisson) - baseline senza smooth terms
-gam_1 <- gam(cnt ~ hr + temp + workday_f + weather_f, family = poisson, data = train_data)
+gam_1 <- gam(cnt ~ hr + temp + workday_f + weather_f + yr_f, family = poisson, data = train_data)
+summary(gam_1)
 
 # GAM con spline smooth per hr e temp (Poisson) - cattura non-linearità
-gam_2 <- gam(cnt ~ s(hr, bs = "cc", k = 24) + s(temp) + workday_f + weather_f, family = poisson, data = train_data)
+gam_2 <- gam(cnt ~ s(hr, bs = "cc", k = 24) + s(temp) + workday_f + weather_f+ yr_f, family = poisson, data = train_data)
+summary(gam_2)
 
 # GAM con interazione hr-workday (Poisson) - effetto ora dipende da tipo giorno
-gam_3 <- gam(cnt ~ s(hr, bs = 'cc', by = workingday) + s(temp) + weather_f, family = poisson, data = train_data)
+gam_3 <- gam(cnt ~ s(hr, bs = 'cc', by = workingday) + s(temp) + weather_f + yr_f, family = poisson, data = train_data)
+summary(gam_3)
 
 # GAM Negative Binomial con interazione - gestisce overdispersion nei count data
-gam_nb <- gam(cnt ~ s(hr, bs = 'cc', by = workingday) + s(temp) + weather_f, family = nb(), data = train_data)
+gam_nb <- gam(cnt ~ s(hr, bs = 'cc', by = workingday) + s(temp) + weather_f + yr_f, family = nb(), data = train_data)
+summary(gam_nb)
 
 # Tabella AIC
 aic_results <- data.frame(
@@ -82,7 +86,7 @@ kable(aic_results, caption = "Confronto AIC (Valori più bassi indicano modelli 
 
 ## 1.2 Test ANOVA (Analisi della Varianza)
 
-Per confermare che il modello più complesso (M3) sia effettivamente necessario, eseguiamo un test ANOVA.
+Per confermare che il modello più complesso (M3) sia effettivamente necessario, eseguiamo un test ANOVA. (n.d.r. si potrebbe fare anche con gli altri ma sarebbe ridondante)
 ```{r anova-test}
 # Test formale per modelli nidificati
 anova(gam_2, gam_3, test = "Chisq")
@@ -98,6 +102,7 @@ non xe ancora full
 ```{r diagnostic-lm}
 # Linear Model classico con tutti i factor - baseline per confronto
 lm_full <- lm(cnt ~ hr + temp + workday_f + weather_f + season_f + yr_f, data = train_data)
+summary(lm_full)
 par(mfrow = c(2, 2))
 plot(lm_full, main = "Diagnostica LM")
 ```
@@ -107,16 +112,13 @@ plot(lm_full, main = "Diagnostica LM")
 
 ## 2.2 Plot degli Effetti Smooth (GAM)
 
-Visualizziamo come cambiano i noleggi al variare di ora e temperatura.
 ```{r gam-effects}
 # GAM NB con spline ciclica per hr - smooth ciclico per pattern orario 24h
-gam_final_ciclica <- gam(cnt ~ s(hr, bs = 'cc') + weather_f, family = nb(), data = train_data)
-
-# GAM NB senza vincolo ciclico - spline standard per confronto
-gam_final_no <- gam(cnt ~ s(hr) + weather_f, family = nb(), data = train_data)
-
-# Summary modello con spline ciclica
+gam_final_ciclica <- gam(cnt ~ s(hr, bs = 'cc') + weather_f + yr_f, family = nb(), data = train_data)
 summary(gam_final_ciclica)
+
+gam_final_no <- gam(cnt ~ s(hr) + weather_f + yr_f, family = nb(), data = train_data)
+summary(gam_final_no)
 
 par(mfrow = c(1, 2))
 plot(gam_final_ciclica, select = 1, main = "Spline Ciclica (hr)")
@@ -126,15 +128,54 @@ plot(gam_final_no, select = 1, main = "Effetto Spline")
 ## 2.3 Visualizzazione dell'Interazione 3D
 
 ```{r 3d-interaction}
-# GAM NB con interazione hr-workday per superficie 3D - visualizza pattern differenziati
+# GAM NB con interazione hr-workday per superficie 3D - visualizza pattern differenziati questo xe best
+# senza anno
 gam_interaction <- gam(cnt ~ s(hr, bs = 'cc', k = 24, by = workday_f) + 
                         s(temp) + weather_f, 
                        family = nb(), data = train_data)
+summary(gam_interaction)
 
 vis.gam(gam_interaction, view = c("hr", "temp"), 
         plot.type = "persp", 
         theta = 140, phi = 30, color = "terrain",
         main = "Superficie di Risposta: Ora vs Temperatura")
+```
+```{r}
+# questo xe best con l'anno
+gam_interaction_year <- gam(cnt ~ s(hr, bs = 'cc', k = 24, by = workday_f) + 
+                        s(temp) + weather_f + yr_f, 
+                       family = nb(), data = train_data)
+summary(gam_interaction_year)
+
+anova(gam_interaction, gam_interaction_year, test = "Chisq")
+
+#mse e r^2
+# Funzione per calcolare le metriche
+get_metrics <- function(model, data, target_col) {
+  actual <- data[[target_col]]
+  # Usiamo type = "response" per ottenere i conteggi previsti (non il log)
+  pred <- predict(model, newdata = data, type = "response")
+  
+  aic_test <- AIC(model)
+  mse  <- mean((actual - pred)^2)
+  rmse <- sqrt(mse)
+  r2   <- 1 - (sum((actual - pred)^2) / sum((actual - mean(actual))^2))
+  
+  return(c(AIC = aic_test, MSE = mse, RMSE = rmse, R2 = r2))
+}
+
+# Calcolo metriche per entrambi i modelli
+metrics_best <- get_metrics(gam_interaction_best, test_data, "cnt")
+metrics_year <- get_metrics(gam_interaction_year, test_data, "cnt")
+
+# Creazione tabella di confronto
+performance_comparison <- data.frame(
+  Modello = c("Senza Anno (Best)", "Con Anno (Year)"),
+  rbind(metrics_best, metrics_year)
+)
+
+print(performance_comparison)
+
 ```
 
 # 3. Modelli Alternativi e Machine Learning
@@ -144,7 +185,7 @@ vis.gam(gam_interaction, view = c("hr", "temp"),
 MARS identifica i nodi critici delle variabili. gpt????
 ```{r mars-model}
 # MARS con degree=2 - Multivariate Adaptive Regression Splines per interazioni automatiche
-mars_model <- earth(cnt ~ hr + temp + workday_f + weather_f + season_f, data = train_data, degree = 2)
+mars_model <- earth(cnt ~ hr + temp + workday_f + weather_f + season_f + yr_f, data = train_data, degree = 2)
 
 # Summary del modello MARS
 summary(mars_model)
@@ -152,10 +193,65 @@ summary(mars_model)
 # Plot della selezione dei termini
 plot(mars_model, which = 1, main = "Selezione Termini MARS (GCV)")
 ```
+```{r CV}
+# Confrontiamo i modelli rispetto alla capacità predittiva puntuale, misurata via RMSE
+library(dplyr)
 
-# 4. Valutazione Finale su Test Set (Metrics)
+# Creiamo i fold (es. 5 fold)
+set.seed(6767)
+folds <- sample(rep(1:5, length.out = nrow(train_data)))
 
-Confrontiamo tutti i modelli su dati mai visti (Test Set) usando MSE, RMSE e R².
+# Inizializziamo i vettori per i risultati
+rmse_mars <- numeric(5)
+rmse_gam  <- numeric(5)
+
+mae_mars <- numeric(5)
+mae_gam  <- numeric(5)
+
+for(i in 1:5) {
+  # Divisione Train/Validation interna
+  val_idx <- which(folds == i)
+  cv_train <- train_data[-val_idx, ]
+  cv_val   <- train_data[val_idx, ]
+  
+  # Fit MARS
+  m_mars <- earth(cnt ~ hr + temp + workday_f + weather_f + season_f + yr_f, 
+                  data = cv_train, degree = 2)
+  
+  # Fit GAM (usiamo REML che è più robusto per Negative Binomial)
+  m_gam <- gam(cnt ~ s(hr, bs = 'cc', k = 24, by = workday_f) + s(temp) + 
+               weather_f + yr_f, family = nb(), data = cv_train, method = "REML")
+  
+  # Predizioni
+  pred_mars <- predict(m_mars, newdata = cv_val)
+  pred_gam  <- predict(m_gam, newdata = cv_val, type = "response")
+  
+  # Calcolo RMSE
+  rmse_mars[i] <- sqrt(mean((cv_val$cnt - pred_mars)^2))
+  rmse_gam[i]  <- sqrt(mean((cv_val$cnt - pred_gam)^2))
+  
+  # calcolo MAE
+  mae_mars[i] <- mean(abs(cv_val$cnt - pred_mars))
+  mae_gam[i]  <- mean(abs(cv_val$cnt - pred_gam))
+}
+
+# Risultato finale: Media degli RMSE e media dei MAE
+cat('mars',mean(rmse_mars), '\n')
+cat('gam', mean(rmse_gam), '\n')
+
+cat('mars', mean(mae_mars), '\n')
+cat('gam', mean(mae_gam), '\n')
+
+# Verifica quale modello viola meno le proprie assunzioni
+par(mfrow = c(1, 2))
+plot(pred_mars, cv_val$cnt - pred_mars)  # Omoschedasticità?
+plot(pred_gam, cv_val$cnt - pred_gam)    # Eteroschedasticità quadratica?
+```
+
+
+# 4. Valutazione Finale su Test Set (Metrics) questa parte è in più era solo una prova per le metriche post train test validation
+
+Confrontiamo tutti i modelli su dati mai visti (Test Set) usando MSE, RMSE e R². questo non va ancora bene rick
 ```{r final-evaluation}
 # Funzione calcolo metriche
 calc_metrics <- function(actual, pred) {
@@ -227,4 +323,17 @@ ggplot(plot_long, aes(x = Time, y = Valore, color = Modello, linetype = Modello)
   labs(title = "Confronto Serie Temporale (Primi 150 record del Test)", 
        y = "cnt", x = "Time") +
   theme_minimal()
+```
+prova di una predizione così a caso
+```{r prova predizione}
+new_data <- data.frame(
+  hr = 8,
+  temp = 0.5,
+  weather_f = factor("Clear", levels = levels(df$weather_f)),
+  workday_f = factor("Working day", levels = levels(df$workday_f)), 
+  yr_f = factor("2012", levels = levels(df$yr_f))
+)
+
+predizione_test <- predict(gam_interaction_year, new_data, type = "response")
+print(predizione_test)
 ```
