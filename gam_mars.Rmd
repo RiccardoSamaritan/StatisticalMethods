@@ -247,9 +247,21 @@ par(mfrow = c(1, 2))
 plot(pred_mars, cv_val$cnt - pred_mars)  # Omoschedasticità?
 plot(pred_gam, cv_val$cnt - pred_gam)    # Eteroschedasticità quadratica?
 ```
+```{r visualizzazione gam model spline singole}
+# Visualizzazione degli effetti spline per il GAM gam_interaction_year
+plot(gam_interaction_year, select = 1, main = "Effetto Spline (hr) con workday0")
+plot(gam_interaction_year, select = 2, main = "Effetto Spline (hr) con workday1")
+plot(gam_interaction_year, select = 3, main = "Effetto Spline (temp)")
+
+# select = 1: Spline di hr per il primo livello di workday_f.
+
+# select = 2: Spline di hr per il secondo livello di workday_f.
+
+# select = 3: Spline della temperatura s(temp).
+```
 
 
-# 4. Valutazione Finale su Test Set (Metrics) questa parte è in più era solo una prova per le metriche post train test validation
+# 4. Valutazione Finale su Test Set (Metrics)
 
 Confrontiamo tutti i modelli su dati mai visti (Test Set) usando MSE, RMSE e R². questo non va ancora bene rick
 ```{r final-evaluation}
@@ -324,7 +336,6 @@ ggplot(plot_long, aes(x = Time, y = Valore, color = Modello, linetype = Modello)
        y = "cnt", x = "Time") +
   theme_minimal()
 ```
-prova di una predizione così a caso
 ```{r prova predizione}
 new_data <- data.frame(
   hr = 8,
@@ -337,4 +348,3 @@ new_data <- data.frame(
 predizione_test <- predict(gam_interaction_year, new_data, type = "response")
 print(predizione_test)
 ```
-
