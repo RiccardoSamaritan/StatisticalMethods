@@ -44,6 +44,7 @@ set.seed(6767)
 
 train_id = sample(1:nrow(df), 0.75*nrow(df))
 train = df[train_id, ]
+
 test  = df[-train_id, ]
 ```
 
@@ -74,9 +75,9 @@ tree_model <- rpart(cnt ~
       windspeed,
       data = train,
       method = "anova",
-      control = rpart.control(cp = 0.001, minsplit = 10, maxdepth = 20))
+      control = rpart.control(cp = 0.001, minsplit = 10, maxdepth = 10))
 
-rpart.plot(tree_model, type = 5, extra = 100, fallen.leaves = TRUE)
+rpart.plot(tree_model, type = 5, extra = 101, fallen.leaves = FALSE)
 
 ```
 
@@ -86,46 +87,32 @@ plotcp(tree_model)
 
 best_cp = tree_model$cptable[which.min(tree_model$cptable[,"xerror"]), "CP"]
 
-pruned_tree = prune(tree_model, cp = best_cp)
-
-rpart.plot(pruned_tree, type = 2, extra = 101, fallen.leaves = FALSE)
-```
-```{r conftonto}
-
-mod_nb_hr_working = glm.nb(cnt ~ 
-      hr_f +
-      season_f +
-      yr_f +
-      workday_f +
-      weather_f +
-      temp +
-      hr_f*workday_f,
-      data = train)
-
-pred_nb = predict.glm(mod_nb_hr_working,newdata = test,type = "response")
-pred_tree <- predict(tree_model, newdata = test)
-pred_pruned_tree = predict(pruned_tree, newdata = test)
-
-# RMSE
-rmse_nb = sqrt(mean((test$cnt - pred_nb)^2))
-rmse_tree <- sqrt(mean((test$cnt - pred_tree)^2))
-rmse_pruned_tree <- sqrt(mean((test$cnt - pred_pruned_tree)^2))
-pred_lm <- predict(baseline_LineReg, newdata = test)
-rmse_lm <- sqrt(mean((test$cnt - pred_lm)^2))
-
-rmse_lm
-rmse_tree
-rmse_pruned_tree
-rmse_nb
-
 ```
 
+
+```{r pruned tree}
+pruned_tree = prune(tree_model, cp = 0.012 )
+
+rpart.plot(pruned_tree, type = 5, extra = 100, fallen.leaves = FALSE)
+```
+
+```{r}
+png("plot_cp_high_res.png", 
+    width = 2400,            # Larghezza in pixel
+    height = 1800,           # Altezza in pixel
+    res = 300)               # Risoluzione (300 DPI è lo standard per la stampa)
+
+
+rpart.plot(pruned_tree, type = 5, extra = 100, fallen.leaves = FALSE)
+
+# 3. Chiudi il file (fondamentale per salvare!)
+dev.off()
+```
 
 ```{r random forest}
 library(randomForest)
 
 rf_model <- randomForest(cnt ~ 
-      hr_f +
       hr_f +
       season_f +
       workday_f +
@@ -135,13 +122,17 @@ rf_model <- randomForest(cnt ~
       hum +
       windspeed,
       data = train,
-      ntree = 300,      # numero di alberi
-      mtry = 3,         # variabili candidate a ogni split
+      ntree = 100,
+      mtry = 3,
       importance = TRUE
 )
-pred_rf <- predict(rf_model, newdata = test)
 
-rmse_rf <- sqrt(mean((test$cnt - pred_rf)^2))
-rmse_rf
+```
 
+```{r rf importance}
+importance(rf_model)
+varImpPlot(rf_model)
+
+plot(rf_model, main = "MSE on OOB samples vs number of trees")
+legend("topright", legend = "MSE", col = "black", lty = 1)
 ```

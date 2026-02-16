@@ -191,9 +191,12 @@ mod_pois_2 = glm(cnt ~
       temp +
       hr_f * workday_f,
       family = poisson, data = train) 
+summary(mod_pois_2)
 ```
 
-
+```{r}
+plot(mod_pois_2)
+```
 
 ----------------------------------------------
 
@@ -204,7 +207,6 @@ mod_quasi_pois <- glm(
   family = quasipoisson(link = "log"),
   data = train
 )
-summary(mod_quasi_pois)
 ```
 
 ```{r AIC}

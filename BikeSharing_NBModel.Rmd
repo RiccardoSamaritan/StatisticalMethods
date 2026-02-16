@@ -116,7 +116,7 @@ mod_nb_no_interactions = glm.nb(cnt ~
 ```
 
 ```{r dispersion in nb}
-deviance(mod_nb) / df.residual(mod_nb) # close to 1 --> good
+deviance(mod_nb_hr_working) / df.residual(mod_nb_hr_working) # close to 1 --> good
 ``` 
 ```{r aic}
 AIC(mod_nb_full, mod_nb_hr_working, mod_nb_season_weather, mod_nb_no_interactions)
@@ -124,4 +124,9 @@ AIC(mod_nb_full, mod_nb_hr_working, mod_nb_season_weather, mod_nb_no_interaction
 ```{r nested model test}
 anova(mod_nb_hr_working, mod_nb_full)
 ```
-
+```{r final model}
+summary(mod_nb_hr_working)
+```
+```{r}
+plot(mod_nb_hr_working)
+```
