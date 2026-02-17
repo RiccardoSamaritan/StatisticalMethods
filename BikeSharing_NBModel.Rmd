@@ -7,7 +7,6 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-setwd("~/STORAGE/UNI/MAGISTRALE/STAT METHODS/FINAL PROJECT/BikeSharing")
 
 library(corrplot)
 library(patchwork)
@@ -129,8 +128,4 @@ summary(mod_nb_hr_working)
 ```
 ```{r}
 plot(mod_nb_hr_working)
-```
-
-```{r}
-anova(mod_nb_full, test = "LRT")
 ```

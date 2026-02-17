@@ -7,7 +7,6 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-setwd("~/STORAGE/UNI/MAGISTRALE/STAT METHODS/FINAL PROJECT/BikeSharing")
 
 library(corrplot)
 library(patchwork)
@@ -178,7 +177,7 @@ tab_models <- data.frame(
 
 tab_models[order(tab_models$AIC), ]
 ```
-we can clearly see that interactions are fundamentals. hum and windspeed not really, yr can be useful
+We can clearly see that interactions are fundamentals. hum and windspeed not really, yr can be useful
 
 ```{r final model}
 mod_pois_2 = glm(cnt ~ 
