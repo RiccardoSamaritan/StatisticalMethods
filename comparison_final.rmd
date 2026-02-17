@@ -1,0 +1,172 @@
+---
+title: "confronto_final"
+author: "Giovanni Oro"
+date: "2026-02-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r data_import}
+library(mgcv)
+library(earth)
+library(rpart)
+library(rpart.plot)
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(randomForest)
+
+library(corrplot)
+library(patchwork)
+library(ggridges)
+library(MASS)
+
+# Importazione del dataset bike sharing
+df = read.csv("hour.csv")
+
+# Creazione variabili categoriche con etichette descrittive
+df$season_f = factor(df$season, labels = c("Spring", "Summer", "Autumn","Winter"))
+df$weather_f = factor(df$weathersit, labels = c("Clear", "Cloudy/Mist", 
+                                                  "Light Snow/Rain", "Heavy Rain"))
+df$workday_f = factor(df$workingday, labels = c("Weekend/Holiday", "Working day"))
+df$hr_f = factor(df$hr)
+df$weekday_f = factor(df$weekday)
+df$yr_f = factor(df$yr, labels = c("2011","2012"))
+
+cat("Dataset dimensions:", dim(df), "\n")
+cat("Variables:", names(df), "\n")
+
+set.seed(6767)
+
+# Split 75% training, 25% test
+train_id = sample(1:nrow(df), 0.75*nrow(df))
+train_data = df[train_id, ]
+test_data  = df[-train_id, ]
+```
+
+```{r model_definition}
+# modello poisson best
+mod_pois_2 = glm(cnt ~ 
+      hr_f +
+      season_f +
+      yr_f +
+      workday_f +
+      weather_f +
+      temp +
+      hr_f * workday_f,
+      family = poisson, data = train_data) 
+
+# modello negative binomial best
+mod_nb_hr_working = glm.nb(cnt ~ 
+      hr_f +
+      season_f +
+      yr_f +
+      workday_f +
+      weather_f +
+      temp +
+      hr_f*workday_f,
+      data = train_data)
+
+# modello quasi poisson
+mod_quasi_pois <- glm(
+  cnt ~ hr_f + season_f + workday_f + weather_f + temp + yr_f + hr_f*workday_f,
+  family = quasipoisson(link = "log"),
+  data = train_data
+)
+# Modello GAM best
+gam_interaction_year <- gam(cnt ~ s(hr, bs = 'cc', k = 24, by = workday_f) + s(temp) + season_f + weather_f + yr_f, 
+                       family = nb(), data = train_data)
+
+# Modello Mars best
+mars_model <- earth(cnt ~ hr + temp + workday_f + weather_f + season_f + yr_f, data = train_data, degree = 2)
+
+# modello tree best
+tree_model <- rpart(cnt ~ 
+      hr_f +
+      season_f +
+      workday_f +
+      weather_f +
+      temp +
+      yr_f +
+      hum +
+      windspeed,
+      data = train_data,
+      method = "anova",
+      control = rpart.control(cp = 0.001, minsplit = 10, maxdepth = 10))
+
+pruned_tree = prune(tree_model, cp = 0.012 )
+
+
+# modello random forest best (n alberi 40)
+rf_model <- randomForest(cnt ~ 
+      hr_f +
+      season_f +
+      workday_f +
+      weather_f +
+      temp +
+      yr_f +
+      hum +
+      windspeed,
+      data = train_data,
+      ntree = 40,
+      mtry = 3,
+      importance = TRUE
+)
+```
+
+```{r}
+# Valutazione modelli con MSE, RMSE, MAE SU TEST_DATA
+evaluate_model <- function(model, test_data, model_type) {
+  if (model_type == "lm" || model_type == "poisson" || model_type == "nb" || model_type == "quasi_poisson") {
+    predictions <- predict(model, newdata = test_data, type = "response")
+  } else if (model_type == "gam") {
+    predictions <- predict(model, newdata = test_data, type = "response")
+  } else if (model_type == "mars") {
+    predictions <- predict(model, newdata = test_data)
+  } else if (model_type == "tree") {
+    predictions <- predict(model, newdata = test_data)
+  } else if (model_type == "rf") {
+    predictions <- predict(model, newdata = test_data)
+  }
+  
+  mse <- mean((test_data$cnt - predictions)^2)
+  rmse <- sqrt(mse)
+  mae <- mean(abs(test_data$cnt - predictions))
+  
+  return(list(MSE = mse, RMSE = rmse, MAE = mae))
+}
+
+# Valutazione di tutti i modelli
+results <- list(
+  Poisson = evaluate_model(mod_pois_2, test_data, "poisson"),
+  Negative_Binomial = evaluate_model(mod_nb_hr_working, test_data, "nb"),
+  Quasi_Poisson = evaluate_model(mod_quasi_pois, test_data, "quasi_poisson"),
+  GAM = evaluate_model(gam_interaction_year, test_data, "gam"),
+  MARS = evaluate_model(mars_model, test_data, "mars"),
+  Tree = evaluate_model(pruned_tree, test_data, "tree"),
+  Random_Forest = evaluate_model(rf_model, test_data, "rf")
+)
+```
+
+```{r results_table}
+# Creazione tabella dei risultati
+results_df <- do.call(rbind, lapply(names(results), function(model) {
+  c(Model = model, results[[model]])
+}))
+results_df <- as.data.frame(results_df)
+results_df$MSE <- as.numeric(as.character(results_df$MSE))
+results_df$RMSE <- as.numeric(as.character(results_df$RMSE))
+results_df$MAE <- as.numeric(as.character(results_df$MAE))
+kable(results_df, caption = "Performance dei modelli sui dati di test")
+
+# riprintiamo la tabella dei risultati ordinata per RMSE
+results_df <- results_df[order(results_df$RMSE), ]
+kable(results_df, caption = "Performance dei modelli sui dati di test (ordinata per RMSE)")
+```
+```{r}
+AIC(mod_pois_2, mod_nb_hr_working)
+```
+
