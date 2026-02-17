@@ -91,7 +91,7 @@ To confirm that the more complex model (M3) is indeed necessary, we perform an A
 anova(gam_2, gam_3, test = "Chisq")
 ```
 
-**Interpretation**: The extremely low p-value indicates that the interaction is statistically significant. It is a necessary component of the model.
+The extremely low p-value indicates that the interaction is statistically significant. It is a necessary component of the model.
 
 # 2. Visual Analysis of the Models
 
@@ -105,8 +105,6 @@ par(mfrow = c(2, 2))
 plot(lm_full, main = "LM Diagnostics")
 
 ```
-
-**Methodological Note**: The violation of the normality assumption is common when dealing with count data. **GAMs using Poisson or Negative Binomial families** are more appropriate, as they do not require the normality of residuals.
 
 ## 2.2 Smooth Effects Plot(GAM)
 
@@ -150,7 +148,7 @@ summary(gam_interaction_year)
 # Comparing models via ANOVA
 anova(gam_interaction, gam_interaction_year, test = "Chisq")
 
-# Performance Metrics: MSE and R-squared
+# Performance Metrics: MSE and RMSE and R^2
 # Function to calculate evaluation metrics
 get_metrics <- function(model, data, target_col) {
   actual <- data[[target_col]]
@@ -206,7 +204,7 @@ Here is the professional English translation for your section on alternative mod
 
 ## 3.1 MARS (Automated Feature Selection)
 
-MARS (Multivariate Adaptive Regression Splines) automatically identifies critical "hinge points" (nodes) for variables and handles complex interactions without manual specification.
+MARS automatically identifies critical "hinge points" (nodes) for variables and handles complex interactions without manual specification.
 
 ```{r mars-model}
 # MARS with degree=2 - Uses Multivariate Adaptive Regression Splines for automated interactions
