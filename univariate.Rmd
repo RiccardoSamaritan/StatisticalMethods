@@ -1,0 +1,513 @@
+---
+title: "Univariate Analysis: Bike-Sharing Dataset"
+author: "Statistical Analysis"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: readable
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 8, fig.height = 5)
+```
+
+# Setup and Data Loading
+
+```{r libraries}
+library(corrplot)
+library(GGally)
+library(moments)
+```
+
+```{r load-data}
+data <- read.csv("hour.csv")
+
+# Re-labeling categorical variables for better interpretability
+data$season_lab <- factor(data$season, labels = c("Spring", "Summer", "Fall", "Winter"))
+data$weather_lab <- factor(data$weathersit, labels = c("Clear", "Mist", "Light Snow/Rain", "Heavy Rain"))
+
+# Dataset dimensions
+cat("Observations:", nrow(data), "\nVariables:", ncol(data))
+```
+```{r data-gap-analysis}
+library(dplyr)
+library(lubridate)
+
+# Ensure the date column is in Date format
+data$dteday <- as.Date(data$dteday)
+
+# Identify the start and end of the observations
+start_date <- min(data$dteday)
+end_date <- max(data$dteday)
+
+# Create a theoretical complete timeline (every hour for every day)
+theoretical_timeline <- expand.grid(
+  dteday = seq.Date(start_date, end_date, by = "day"),
+  hr = 0:23
+)
+
+# Identify missing records (gaps) by joining the actual data with the timeline
+check_gap <- theoretical_timeline %>%
+  left_join(data, by = c("dteday", "hr")) %>%
+  filter(is.na(cnt)) # Filter only records that do not exist in your dataset
+
+# Summarize the number of missing hours per day
+gap_per_day <- check_gap %>%
+  group_by(dteday) %>%
+  summarise(missing_hours = n()) %>%
+  arrange(desc(missing_hours))
+
+# Display the results
+gap_per_day
+```
+
+**Note**: The dataset contains hourly bike rental data from 2011-01-01 to 2012-12-31. A completeness check reveals some missing hours on certain days. After investigations, these gaps are caused by natural disaster events (e.g., hurricane, snow storm) leading to station closures.
+
+---
+
+# Temporal Categorical Variables
+
+## Season
+
+```{r season}
+# Frequency distribution
+freq_season <- data.frame(table(data$season_lab)) %>%
+  rename(season = Var1, frequency = Freq) %>%
+  mutate(proportion = frequency / sum(frequency))
+
+print(freq_season)
+
+# Visualization with ggplot2
+p_season <- ggplot(freq_season, aes(x = season, y = frequency, fill = season)) +
+  geom_bar(stat = "identity", color = "black", linewidth = 0.5) +
+  geom_text(aes(label = round(proportion, 3)), vjust = -0.5, size = 3.5) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Season Distribution",
+       x = "Season",
+       y = "Frequency",
+       fill = "Season") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+
+print(p_season)
+
+# Chi-square test for uniformity
+chisq.test(freq_season$frequency)
+```
+
+**Interpretation**: Dataset is well-balanced across the four seasons (~25% each).
+
+## Year
+
+```{r year}
+freq_year <- data.frame(table(data$yr)) %>%
+  rename(year = Var1, frequency = Freq) %>%
+  mutate(year = factor(year, labels = c("2011", "2012")),
+         proportion = frequency / sum(frequency))
+
+print(freq_year)
+
+# Visualization 
+p_year <- ggplot(freq_year, aes(x = year, y = frequency, fill = year)) +
+  geom_bar(stat = "identity", color = "black", linewidth = 0.5) +
+  geom_text(aes(label = round(proportion, 3)), vjust = -0.5, size = 3.5) +
+  scale_fill_manual(values = c("2011" = "skyblue", "2012" = "salmon")) +
+  labs(title = "Yearly Distribution",
+       x = "Year",
+       y = "Frequency",
+       fill = "Year") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+print(p_year)
+```
+
+## Month
+
+```{r month}
+freq_month <- table(data$mnth)
+print(freq_month)
+
+barplot(freq_month, main = "Monthly Distribution", 
+        col = "lightgreen", xlab = "Month", ylab = "Frequency")
+
+# Uniformity test
+chisq.test(freq_month)
+```
+
+## Hour
+
+```{r hour}
+freq_hour <- data.frame(table(data$hr)) %>%
+  rename(hour = Var1, frequency = Freq) %>%
+  mutate(hour = as.numeric(hour) - 1,
+         proportion = frequency / sum(frequency))
+
+print(summary(freq_hour$hour))
+
+# Visualization
+p_hour <- ggplot(freq_hour, aes(x = hour, y = frequency, fill = frequency)) +
+  geom_bar(stat = "identity", color = "black", linewidth = 0.3) +
+  scale_fill_gradient(low = "lavender", high = "purple") +
+  scale_x_continuous(breaks = seq(0, 23, by = 2)) +
+  labs(title = "Hourly Distribution",
+       x = "Hour (0-23)",
+       y = "Frequency",
+       fill = "Frequency") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+print(p_hour)
+
+# Uniformity test
+chisq.test(freq_hour$frequency)
+```
+
+
+## Weekday
+
+```{r weekday}
+freq_weekday <- data.frame(table(data$weekday)) %>%
+  rename(weekday = Var1, frequency = Freq) %>%
+  mutate(weekday = factor(as.numeric(weekday) - 1, 
+                          labels = c("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")),
+         proportion = frequency / sum(frequency))
+
+print(freq_weekday)
+
+# Visualization
+p_weekday <- ggplot(freq_weekday, aes(x = weekday, y = frequency, fill = weekday)) +
+  geom_bar(stat = "identity", color = "black", linewidth = 0.5) +
+  scale_fill_brewer(palette = "Set3") +
+  labs(title = "Weekday Distribution",
+       x = "Weekday",
+       y = "Frequency",
+       fill = "Weekday") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+
+print(p_weekday)
+
+chisq.test(freq_weekday$frequency)
+```
+
+---
+
+## Holiday
+
+```{r holiday}
+freq_holiday <- data.frame(table(data$holiday)) %>%
+  rename(holiday = Var1, frequency = Freq) %>%
+  mutate(holiday = factor(holiday, labels = c("Non-Holiday", "Holiday")),
+         proportion = frequency / sum(frequency))
+
+print(freq_holiday)
+
+# Visualization
+p_holiday <- ggplot(freq_holiday, aes(x = holiday, y = frequency, fill = holiday)) +
+  geom_bar(stat = "identity", color = "black", linewidth = 0.5) +
+  geom_text(aes(label = paste0(round(proportion * 100, 1), "%")), vjust = -0.5, size = 3.5) +
+  scale_fill_manual(values = c("Non-Holiday" = "lightblue", "Holiday" = "tomato")) +
+  labs(title = "Holiday Distribution",
+       x = "Holiday Status",
+       y = "Frequency",
+       fill = "Status") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+print(p_holiday)
+```
+
+**Note**: Proportion reflects the rarity of holidays in the calendar.
+
+## Working Day
+
+```{r workingday}
+freq_working <- data.frame(table(data$workingday)) %>%
+  rename(workingday = Var1, frequency = Freq) %>%
+  mutate(workingday = factor(workingday, labels = c("Non-Working", "Working")),
+         proportion = frequency / sum(frequency))
+
+print(freq_working)
+
+# Visualization
+p_working <- ggplot(freq_working, aes(x = workingday, y = frequency, fill = workingday)) +
+  geom_bar(stat = "identity", color = "black", linewidth = 0.5) +
+  geom_text(aes(label = paste0(round(proportion * 100, 1), "%")), vjust = -0.5, size = 3.5) +
+  scale_fill_manual(values = c("Non-Working" = "lightcyan", "Working" = "steelblue")) +
+  labs(title = "Working Day Distribution",
+       x = "Working Day Status",
+       y = "Frequency",
+       fill = "Status") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+print(p_working)
+```
+
+**Interpretation**: About 70% of observations represent working days, consistent with standard calendar distribution.
+
+## Weather Situation
+
+```{r weather-distribution}
+library(ggplot2)
+
+# Visualization of Weather Conditions
+ggplot(data, aes(x = weather_lab, fill = weather_lab)) +
+  geom_bar(color = "black", show.legend = FALSE) +
+  stat_count(geom = "text", 
+             aes(label = after_stat(count)), 
+             vjust = -0.5,
+             size = 4.5, 
+             fontface = "bold") +
+  scale_fill_manual(values = c("Clear" = "yellow", 
+                               "Mist" = "lightgrey", 
+                               "Light Snow/Rain" = "darkgrey", 
+                               "Heavy Rain" = "black")) +
+  
+  labs(title = "Weather Condition Distribution",
+       x = "Weather Condition",
+       y = "Frequency") +
+
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+
+  theme_minimal(base_size = 14) +
+  theme(plot.title = element_text(face = "bold"),
+        panel.grid.major.x = element_blank())
+```
+
+**Interpretation**: Most rentals occur during "Clear/Few Clouds" (Category 1). Category 4 (Heavy Rain/Snow) is extremely rare (n = 3), representing a rare event. Sharp class imbalance present.
+
+---
+
+# Continuous Variables (Normalized)
+
+## Temperature (temp)
+
+```{r temp}
+# Descriptive statistics
+cat("Temperature Statistics:\n")
+summary(data$temp)
+cat("\nStd Dev:", sd(data$temp), "\n")
+cat("Coefficient of Variation:", sd(data$temp)/mean(data$temp), "\n")
+
+# Visualization
+par(mfrow = c(1, 3))
+hist(data$temp, main = "Temperature Histogram", 
+     col = "seagreen", border = "white", xlab = "Temp (normalized)", 
+     probability = TRUE, breaks = 30)
+lines(density(data$temp), col = "red", lwd = 2)
+
+boxplot(data$temp, main = "Temperature Boxplot", col = "gold")
+
+qqnorm(data$temp, main = "Q-Q Plot Temperature")
+qqline(data$temp, col = "red")
+par(mfrow = c(1, 1))
+
+# Normality test
+shapiro.test(sample(data$temp, 5000))
+```
+
+**Interpretation**: Roughly bimodal distribution, reflecting seasonal nature of data.
+
+## Feeling Temperature (atemp)
+
+```{r atemp}
+cat("Feeling Temperature Statistics:\n")
+summary(data$atemp)
+cat("\nStd Dev:", sd(data$atemp), "\n")
+cat("Coefficient of Variation:", sd(data$atemp)/mean(data$atemp), "\n")
+
+par(mfrow = c(1, 3))
+hist(data$atemp, main = "Feel Temperature Histogram", 
+     col = "coral", border = "white", xlab = "ATemp (normalized)", 
+     probability = TRUE, breaks = 30)
+lines(density(data$atemp), col = "blue", lwd = 2)
+
+boxplot(data$atemp, main = "Feel Temperature Boxplot", col = "lightblue")
+
+qqnorm(data$atemp, main = "Q-Q Plot Feel Temperature")
+qqline(data$atemp, col = "blue")
+par(mfrow = c(1, 1))
+
+shapiro.test(sample(data$atemp, 5000))
+```
+
+**Critical Note**: Extremely correlated with `temp` (r > 0.98), indicating redundant information.
+
+## Humidity (hum)
+
+```{r humidity}
+cat("Humidity Statistics:\n")
+summary(data$hum)
+cat("\nStd Dev:", sd(data$hum), "\n")
+cat("Coefficient of Variation:", sd(data$hum)/mean(data$hum), "\n")
+
+par(mfrow = c(1, 3))
+hist(data$hum, main = "Humidity Histogram", 
+     col = "skyblue", border = "white", xlab = "Humidity (normalized)", 
+     probability = TRUE, breaks = 30)
+
+boxplot(data$hum, main = "Humidity Boxplot", col = "lightcyan")
+
+qqnorm(data$hum, main = "Q-Q Plot Humidity")
+qqline(data$hum, col = "darkblue")
+par(mfrow = c(1, 1))
+
+shapiro.test(sample(data$hum, 5000))
+
+# Skewness
+cat("\nSkewness:", moments::skewness(data$hum))
+```
+**Interpretation**: Slightly right-skewed distribution. Most records show humidity levels between 40% and 80%. Weak negative correlation with bike rentals (r ≈ -0.10), as very high humidity often correlates with rain or discomfort.
+
+## Wind Speed (windspeed)
+
+```{r windspeed}
+cat("Wind Speed Statistics:\n")
+summary(data$windspeed)
+cat("\nStd Dev:", sd(data$windspeed), "\n")
+cat("Coefficient of Variation:", sd(data$windspeed)/mean(data$windspeed), "\n")
+
+par(mfrow = c(1, 3))
+hist(data$windspeed, main = "Wind Speed Histogram", 
+     col = "lightgreen", border = "white", xlab = "Wind Speed (normalized)", 
+     probability = TRUE, breaks = 30)
+
+boxplot(data$windspeed, main = "Wind Speed Boxplot", col = "palegreen")
+
+qqnorm(data$windspeed, main = "Q-Q Plot Wind Speed")
+qqline(data$windspeed, col = "darkgreen")
+par(mfrow = c(1, 1))
+
+shapiro.test(sample(data$windspeed, 5000))
+```
+
+**Interpretation**: Left-skewed distribution. Significant number of records show "0" values, potentially representing near-calm conditions or sensor thresholds. High wind speeds are rare and typically act as a deterrent for casual users.
+
+---
+
+# Count Variables (Response Variables)
+
+## Casual Users
+
+```{r casual}
+cat("Casual Users Statistics:\n")
+summary(data$casual)
+cat("\nStd Dev:", sd(data$casual), "\n")
+cat("Coefficient of Variation:", sd(data$casual)/mean(data$casual), "\n")
+
+par(mfrow = c(1, 2))
+hist(data$casual, main = "Casual Users Distribution", 
+     col = "orange", breaks = 50, xlab = "Count")
+
+boxplot(data$casual, main = "Casual Users Boxplot", col = "peachpuff")
+par(mfrow = c(1, 1))
+
+# Skewness and kurtosis
+cat("\nSkewness:", moments::skewness(data$casual), "\n")
+cat("Kurtosis:", moments::kurtosis(data$casual), "\n")
+```
+
+**Interpretation**: Right-skewed count distribution. Casual users show sporadic, lower-volume behavior.
+
+## Registered Users
+
+```{r registered}
+cat("Registered Users Statistics:\n")
+summary(data$registered)
+cat("\nStd Dev:", sd(data$registered), "\n")
+cat("Coefficient of Variation:", sd(data$registered)/mean(data$registered), "\n")
+
+par(mfrow = c(1, 2))
+hist(data$registered, main = "Registered Users Distribution", 
+     col = "purple", breaks = 50, xlab = "Count")
+
+boxplot(data$registered, main = "Registered Users Boxplot", col = "plum")
+par(mfrow = c(1, 1))
+
+cat("\nSkewness:", moments::skewness(data$registered), "\n")
+cat("Kurtosis:", moments::kurtosis(data$registered), "\n")
+```
+
+**Interpretation**: Registered users show much higher volume and drive overall dataset patterns.
+
+## Total Count (cnt - Target Variable)
+
+```{r total-count-analysis}
+# Display summary statistics for the total count
+cat("Total Count Statistics:\n")
+summary(data$cnt)
+cat("\nStd Dev:", sd(data$cnt), "\n")
+cat("Coefficient of Variation:", sd(data$cnt)/mean(data$cnt), "\n")
+
+# Set up a side-by-side plot layout
+par(mfrow = c(1, 2))
+hist(data$cnt, main = "Total Count Distribution", 
+     col = "firebrick", breaks = 50, xlab = "Count")
+
+boxplot(data$cnt, main = "Total Count Boxplot", col = "salmon")
+
+# Reset plot layout to default
+par(mfrow = c(1, 1))
+
+# Display shape statistics
+cat("\nSkewness:", moments::skewness(data$cnt), "\n")
+cat("Kurtosis:", moments::kurtosis(data$cnt), "\n")
+
+# Verify the additive relationship: total = casual + registered
+cat("\nVerification cnt = casual + registered:\n")
+all.equal(data$cnt, data$casual + data$registered)
+```
+
+```{r}
+library(ggplot2)
+
+# Calculate reference statistics for plot annotations
+mu <- mean(data$cnt)
+med <- median(data$cnt)
+
+ggplot(data, aes(x = cnt)) +
+  # 1. Histogram calculated as density
+  # 'after_stat(density)' is key to aligning it with the density curve
+  geom_histogram(aes(y = after_stat(density)), bins = 50, 
+                 fill = "#4e79a7", color = "white", alpha = 0.6) +
+  
+  # 2. Smooth density curve
+  geom_density(color = "#2c3e50", linewidth = 1.2) +
+  
+  # 3. Vertical lines for Mean and Median
+  geom_vline(aes(xintercept = mu, color = "Mean"), linetype = "dashed", linewidth = 1) +
+  geom_vline(aes(xintercept = med, color = "Median"), linetype = "solid", linewidth = 1) +
+  
+  # 4. Color palette and legend configuration
+  scale_color_manual(name = "Statistics:", 
+                     values = c("Mean" = "#e67e22", "Median" = "#27ae60")) +
+  
+  # 5. Axis labels
+  labs(
+       x = "Number of Rentals (cnt)",
+       y = "Density") +
+  
+  # 6. Professional styling and theme adjustments
+  theme_minimal(base_size = 15) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, color = "#2c3e50"),
+    plot.subtitle = element_text(size = 13, color = "#7f8c8d"),
+    legend.position = "top",
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank()
+  )
+```
+
+- **Distribution**: Strong right-skewed distribution. Most observations concentrated in lower range (0-200 rentals per hour), with long tail extending towards higher values.
+- **Overdispersion**: Variance >> mean, indicating overdispersion typical of count data.
+Logarithmic transformation might be beneficial for linear modeling to normalize residuals. Alternatively, Poisson or Negative Binomial regression more appropriate than standard OLS.
+
+---
+
