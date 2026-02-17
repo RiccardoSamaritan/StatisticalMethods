@@ -1,6 +1,6 @@
 ---
 title: "confronto_final"
-author: "Giovanni Oro"
+author: "Giovanni Oro, Ricccardo Samaritan, Lorenzo Tonet"
 date: "2026-02-17"
 output: html_document
 ---
