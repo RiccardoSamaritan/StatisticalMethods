@@ -24,13 +24,13 @@ library(patchwork)
 library(ggridges)
 library(MASS)
 
-# Importazione del dataset bike sharing
+# Import the bike sharing dataset
 df = read.csv("hour.csv")
 
-# Creazione variabili categoriche con etichette descrittive
-df$season_f = factor(df$season, labels = c("Spring", "Summer", "Autumn","Winter"))
+# Create categorical variables with descriptive labels
+df$season_f = factor(df$season, labels = c("Spring", "Summer", "Autumn", "Winter"))
 df$weather_f = factor(df$weathersit, labels = c("Clear", "Cloudy/Mist", 
-                                                  "Light Snow/Rain", "Heavy Rain"))
+                                                 "Light Snow/Rain", "Heavy Rain"))
 df$workday_f = factor(df$workingday, labels = c("Weekend/Holiday", "Working day"))
 df$hr_f = factor(df$hr)
 df$weekday_f = factor(df$weekday)
@@ -41,14 +41,14 @@ cat("Variables:", names(df), "\n")
 
 set.seed(6767)
 
-# Split 75% training, 25% test
+# 75% training and 25% test split
 train_id = sample(1:nrow(df), 0.75*nrow(df))
 train_data = df[train_id, ]
 test_data  = df[-train_id, ]
 ```
 
 ```{r model_definition}
-# modello poisson best
+# Optimal Poisson model
 mod_pois_2 = glm(cnt ~ 
       hr_f +
       season_f +
@@ -59,7 +59,7 @@ mod_pois_2 = glm(cnt ~
       hr_f * workday_f,
       family = poisson, data = train_data) 
 
-# modello negative binomial best
+# Optimal Negative Binomial model
 mod_nb_hr_working = glm.nb(cnt ~ 
       hr_f +
       season_f +
@@ -70,20 +70,21 @@ mod_nb_hr_working = glm.nb(cnt ~
       hr_f*workday_f,
       data = train_data)
 
-# modello quasi poisson
+# Quasi-Poisson model
 mod_quasi_pois <- glm(
   cnt ~ hr_f + season_f + workday_f + weather_f + temp + yr_f + hr_f*workday_f,
   family = quasipoisson(link = "log"),
   data = train_data
 )
-# Modello GAM best
+
+# Optimal GAM model
 gam_interaction_year <- gam(cnt ~ s(hr, bs = 'cc', k = 24, by = workday_f) + s(temp) + season_f + weather_f + yr_f, 
                        family = nb(), data = train_data)
 
-# Modello Mars best
+# Optimal MARS model
 mars_model <- earth(cnt ~ hr + temp + workday_f + weather_f + season_f + yr_f, data = train_data, degree = 2)
 
-# modello tree best
+# Optimal regression tree model
 tree_model <- rpart(cnt ~ 
       hr_f +
       season_f +
@@ -97,10 +98,11 @@ tree_model <- rpart(cnt ~
       method = "anova",
       control = rpart.control(cp = 0.001, minsplit = 10, maxdepth = 10))
 
+# Pruned tree model
 pruned_tree = prune(tree_model, cp = 0.012 )
 
 
-# modello random forest best (n alberi 40)
+# Optimal Random Forest model (40 trees)
 rf_model <- randomForest(cnt ~ 
       hr_f +
       season_f +
@@ -118,8 +120,9 @@ rf_model <- randomForest(cnt ~
 ```
 
 ```{r}
-# Valutazione modelli con MSE, RMSE, MAE SU TEST_DATA
+# Model evaluation using MSE, RMSE, and MAE on TEST_DATA
 evaluate_model <- function(model, test_data, model_type) {
+  # Select the appropriate prediction type based on model class
   if (model_type == "lm" || model_type == "poisson" || model_type == "nb" || model_type == "quasi_poisson") {
     predictions <- predict(model, newdata = test_data, type = "response")
   } else if (model_type == "gam") {
@@ -132,54 +135,63 @@ evaluate_model <- function(model, test_data, model_type) {
     predictions <- predict(model, newdata = test_data)
   }
   
-  mse <- mean((test_data$cnt - predictions)^2)
+  # Calculate error metrics
+  mse  <- mean((test_data$cnt - predictions)^2)
   rmse <- sqrt(mse)
-  mae <- mean(abs(test_data$cnt - predictions))
+  mae  <- mean(abs(test_data$cnt - predictions))
   
   return(list(MSE = mse, RMSE = rmse, MAE = mae))
 }
 
-# Valutazione di tutti i modelli
+# Evaluate all candidate models
 results <- list(
-  Poisson = evaluate_model(mod_pois_2, test_data, "poisson"),
+  Poisson           = evaluate_model(mod_pois_2, test_data, "poisson"),
   Negative_Binomial = evaluate_model(mod_nb_hr_working, test_data, "nb"),
-  Quasi_Poisson = evaluate_model(mod_quasi_pois, test_data, "quasi_poisson"),
-  GAM = evaluate_model(gam_interaction_year, test_data, "gam"),
-  MARS = evaluate_model(mars_model, test_data, "mars"),
-  Tree = evaluate_model(pruned_tree, test_data, "tree"),
-  Tree_no_pruned = evaluate_model(tree_model, test_data, "tree"),
-  Random_Forest = evaluate_model(rf_model, test_data, "rf")
+  Quasi_Poisson     = evaluate_model(mod_quasi_pois, test_data, "quasi_poisson"),
+  GAM               = evaluate_model(gam_interaction_year, test_data, "gam"),
+  MARS              = evaluate_model(mars_model, test_data, "mars"),
+  Tree              = evaluate_model(pruned_tree, test_data, "tree"),
+  Tree_unpruned     = evaluate_model(tree_model, test_data, "tree"),
+  Random_Forest     = evaluate_model(rf_model, test_data, "rf")
 )
 ```
 
 ```{r results_table}
-# Creazione tabella dei risultati
+# Create results summary table
 results_df <- do.call(rbind, lapply(names(results), function(model) {
   c(Model = model, results[[model]])
 }))
 results_df <- as.data.frame(results_df)
-results_df$MSE <- as.numeric(as.character(results_df$MSE))
-results_df$RMSE <- as.numeric(as.character(results_df$RMSE))
-results_df$MAE <- as.numeric(as.character(results_df$MAE))
-kable(results_df, caption = "Performance dei modelli sui dati di test")
 
-# riprintiamo la tabella dei risultati ordinata per RMSE
+# Convert metric columns to numeric
+results_df$MSE  <- as.numeric(as.character(results_df$MSE))
+results_df$RMSE <- as.numeric(as.character(results_df$RMSE))
+results_df$MAE  <- as.numeric(as.character(results_df$MAE))
+
+# Display model performance on test data
+kable(results_df, caption = "Model performance on test data")
+
+# Re-print the results table sorted by RMSE (lower is better)
 results_df <- results_df[order(results_df$RMSE), ]
-kable(results_df, caption = "Performance dei modelli sui dati di test (ordinata per RMSE)")
+kable(results_df, caption = "Model performance on test data (sorted by RMSE)")
 ```
 ```{r}
-# scriviamo la lista dei vari aic dei modelli ordinata
+# Compile and sort the Akaike Information Criterion (AIC) values
 aic_values <- c(
-  Poisson = AIC(mod_pois_2),
+  Poisson           = AIC(mod_pois_2),
   Negative_Binomial = AIC(mod_nb_hr_working),
-  Quasi_Poisson = AIC(mod_quasi_pois),
-  GAM = AIC(gam_interaction_year),
-  MARS = NA, # MARS non ha AIC
-  Tree = NA, # Tree non ha AIC
-  Random_Forest = NA # Random Forest non ha AIC
+  Quasi_Poisson     = AIC(mod_quasi_pois),
+  GAM               = AIC(gam_interaction_year),
+  MARS              = NA, # MARS does not utilize AIC
+  Tree              = NA, # Trees do not utilize AIC
+  Random_Forest     = NA  # Random Forests do not utilize AIC
 )
+
+# Create and sort AIC dataframe
 aic_df <- data.frame(Model = names(aic_values), AIC = aic_values)
 aic_df <- aic_df[order(aic_df$AIC), ]
-kable(aic_df, caption = "AIC dei modelli (ordinato)")
+
+# Display sorted AIC values
+kable(aic_df, caption = "Model AIC values (sorted)")
 ```
 
