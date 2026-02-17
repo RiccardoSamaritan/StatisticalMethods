@@ -147,6 +147,7 @@ results <- list(
   GAM = evaluate_model(gam_interaction_year, test_data, "gam"),
   MARS = evaluate_model(mars_model, test_data, "mars"),
   Tree = evaluate_model(pruned_tree, test_data, "tree"),
+  Tree_no_pruned = evaluate_model(tree_model, test_data, "tree"),
   Random_Forest = evaluate_model(rf_model, test_data, "rf")
 )
 ```
@@ -167,6 +168,18 @@ results_df <- results_df[order(results_df$RMSE), ]
 kable(results_df, caption = "Performance dei modelli sui dati di test (ordinata per RMSE)")
 ```
 ```{r}
-AIC(mod_pois_2, mod_nb_hr_working)
+# scriviamo la lista dei vari aic dei modelli ordinata
+aic_values <- c(
+  Poisson = AIC(mod_pois_2),
+  Negative_Binomial = AIC(mod_nb_hr_working),
+  Quasi_Poisson = AIC(mod_quasi_pois),
+  GAM = AIC(gam_interaction_year),
+  MARS = NA, # MARS non ha AIC
+  Tree = NA, # Tree non ha AIC
+  Random_Forest = NA # Random Forest non ha AIC
+)
+aic_df <- data.frame(Model = names(aic_values), AIC = aic_values)
+aic_df <- aic_df[order(aic_df$AIC), ]
+kable(aic_df, caption = "AIC dei modelli (ordinato)")
 ```
 
