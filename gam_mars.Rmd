@@ -60,23 +60,23 @@ Confrontiamo tre modelli con complessità crescente:
 - **M2 (Poisson Smooth)**: Introduciamo le spline per ora (hr) e temperatura (temp).
 - **M3 (Poisson Interaction)**: Aggiungiamo l'interazione tra ora e giorno lavorativo.
 ```{r model-selection}
-# GAM base con effetti lineari (Poisson) - baseline senza smooth terms
+# Basic GAM with linear effects (Poisson) - without smooth terms, we take the variables that were presented as significant in the classic linear models
 gam_1 <- gam(cnt ~ hr + temp + workday_f + weather_f + yr_f, family = poisson, data = train_data)
 summary(gam_1)
 
-# GAM con spline smooth per hr e temp (Poisson) - cattura non-linearità
+# GAM with spline smooth for hr and temp (Poisson) - captures non-linearity, cyclic cubic spline
 gam_2 <- gam(cnt ~ s(hr, bs = "cc", k = 24) + s(temp) + workday_f + weather_f+ yr_f, family = poisson, data = train_data)
 summary(gam_2)
 
-# GAM con interazione hr-workday (Poisson) - effetto ora dipende da tipo giorno
+# GAM with hr-workingday interaction (Poisson) - hour effect depends on day type
 gam_3 <- gam(cnt ~ s(hr, bs = 'cc', by = workingday) + s(temp) + weather_f + yr_f, family = poisson, data = train_data)
 summary(gam_3)
 
-# GAM Negative Binomial con interazione - gestisce overdispersion nei count data
+# GAM Negative Binomial with interaction - handles overdispersion in count data
 gam_nb <- gam(cnt ~ s(hr, bs = 'cc', by = workingday) + s(temp) + weather_f + yr_f, family = nb(), data = train_data)
 summary(gam_nb)
 
-# Tabella AIC
+# AIC TABLE
 aic_results <- data.frame(
   Modello = c("Lineare", "Smooth", "Smooth + Interazione", "NB Smooth + Interazione"),
   AIC = c(AIC(gam_1), AIC(gam_2), AIC(gam_3), AIC(gam_nb))
@@ -114,7 +114,7 @@ plot(lm_full, main = "Diagnostica LM")
 
 ```{r gam-effects}
 # GAM NB con spline ciclica per hr - smooth ciclico per pattern orario 24h
-gam_final_ciclica <- gam(cnt ~ s(hr, bs = 'cc') + weather_f + yr_f, family = nb(), data = train_data)
+gam_final_ciclica <- gam(cnt ~ s(hr, bs = 'cc', k = 24) + weather_f + yr_f, family = nb(), data = train_data)
 summary(gam_final_ciclica)
 
 gam_final_no <- gam(cnt ~ s(hr) + weather_f + yr_f, family = nb(), data = train_data)
@@ -175,6 +175,10 @@ performance_comparison <- data.frame(
 )
 
 print(performance_comparison)
+vis.gam(gam_interaction_year, view = c("hr", "temp"), 
+        plot.type = "persp", 
+        theta = 140, phi = 30, color = "terrain",
+        main = "Superficie di Risposta: Ora vs Temperatura")
 
 ```
 
@@ -189,10 +193,30 @@ mars_model <- earth(cnt ~ hr + temp + workday_f + weather_f + season_f + yr_f, d
 
 # Summary del modello MARS
 summary(mars_model)
-
 # Plot della selezione dei termini
 plot(mars_model, which = 1, main = "Selezione Termini MARS (GCV)")
 ```
+```{r}
+# generiamo altri modelli mars a partire da quello di prima e confrontiamoli
+
+# mars model senza interazioni (degree = 1)
+mars_model_no_int <- earth(cnt ~ hr + temp + workday_f + weather_f + season_f + yr_f, data = train_data, degree = 1)
+
+# mars model senza l'uso delle ore
+mars_model_no_hr <- earth(cnt ~ temp + workday_f + weather_f + season_f + yr_f, data = train_data, degree = 2)
+
+# calcoliamo i 3 gcv
+gcv1 <- mars_model$gcv
+gcv2 <- mars_model_no_int$gcv
+gcv3 <- mars_model_no_hr$gcv
+# tabella comparativa
+mars_comparison <- data.frame(
+  Modello = c("MARS senza Interazioni", "MARS senza Ore", "MARS con Interazioni"),
+  GCV = c(gcv2, gcv3, gcv1)  # Ordine: no_int, no_hr, con_int
+)
+kable(mars_comparison, caption = "Confronto GCV per Modelli MARS")
+```
+
 ```{r CV}
 # Confrontiamo i modelli rispetto alla capacità predittiva puntuale, misurata via RMSE
 library(dplyr)
@@ -348,4 +372,3 @@ new_data <- data.frame(
 predizione_test <- predict(gam_interaction_year, new_data, type = "response")
 print(predizione_test)
 ```
-
