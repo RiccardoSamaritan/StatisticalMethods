@@ -91,7 +91,6 @@ data.frame(class = levels(cut(df$cnt, breaks = breaks, right = FALSE)),
            observed = as.numeric(obs),
            expected = exp)
 
-# 7. Test chi-quadrato
 chisq.test(x = as.numeric(obs), p = p_exp)
 ```
 
@@ -195,6 +194,8 @@ summary(mod_pois_2)
 ```
 
 ```{r}
+deviance
+deviance(mod_pois) / df.residual(mod_pois) #significantly >0 --> overdispersion
 plot(mod_pois_2)
 ```
 

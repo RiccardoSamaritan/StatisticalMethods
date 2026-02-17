@@ -97,16 +97,7 @@ rpart.plot(pruned_tree, type = 5, extra = 100, fallen.leaves = FALSE)
 ```
 
 ```{r}
-png("plot_cp_high_res.png", 
-    width = 2400,            # Larghezza in pixel
-    height = 1800,           # Altezza in pixel
-    res = 300)               # Risoluzione (300 DPI è lo standard per la stampa)
-
-
 rpart.plot(pruned_tree, type = 5, extra = 100, fallen.leaves = FALSE)
-
-# 3. Chiudi il file (fondamentale per salvare!)
-dev.off()
 ```
 
 ```{r random forest}

@@ -130,3 +130,7 @@ summary(mod_nb_hr_working)
 ```{r}
 plot(mod_nb_hr_working)
 ```
+
+```{r}
+anova(mod_nb_full, test = "LRT")
+```

@@ -38,7 +38,7 @@ corrplot(cor_data,
 It is possible to see how temp and atemp are (not surprisingly) highly correlated. Another important result is the fact that the temperature is correlated with the rentals count. For categorical and cyclic variables other test are needed.
 
 ```{r summary}
-df$season_f = factor(df$season, labels = c("Spring", "Summer", "Autumn","Winter"))
+df$season_f = factor(df$season, labels = c("Winter","Spring", "Summer", "Autumn"))
 df$weather_f = factor(df$weathersit, labels = c("Clear", "Cloudy/Mist", "Light Snow/Rain", "Heavy Rain"))
 df$workday_f = factor(df$workingday, labels = c("Weekend/Holiday", "Working day"))
 df$hr_f = factor(df$hr)
@@ -71,10 +71,12 @@ It is possible to see that there are two bands in the the feeling temperature wh
 ```{r}
 ggplot(df, aes(x = temp, y = atemp)) +
   geom_point(alpha = 0.2) +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Temperature vs Feeling Temperature",
+    subtitle = "The line indicates the perfect linear correlation",
     x = "Temp. (norm)",
-    y = "Feeling Temp."
+    y = "Feeling Temp. (norm)"
   ) +
   theme_minimal()
 ```
@@ -95,14 +97,22 @@ ggplot(df, aes(x = hum, y = cnt)) +
 A small group of observations is located at the 0.0 coordinate. This may indicate potential sensor malfunctions or outliers representing extremely dry days with very low rental activity.
 
 ```{r}
-ggplot(df, aes(x = season_f, y = cnt)) +
-  geom_boxplot(fill = "orange", outlier.shape = NA) +
+ggplot(df, aes(x = season_f, y = cnt, fill = season_f)) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = c(
+    "Spring" = "#7FC97F",
+    "Summer" = "#56B4E9",
+    "Autumn" = "#D55E00",
+    "Winter" = "#9999fC"
+  )) +
   labs(
-    title = "Rentals by season",
+    title = "Rentals by Season",
     x = "Season",
-    y = "cnt"
+    y = "Rental Count (cnt)",
+    fill = "Season"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(legend.position = "none")
 ```
 The boxplot reveals that Autumn is the peak season for rentals, showing both the highest median and the highest overall volume. Spring consistently records the lowest rental counts with minimal variability, this can be caused by the interaction with other variables, like holidays or something else. While Summer and Winter show similar median levels, Summer exhibits a higher potential for peak demand.
 ```{r}
@@ -114,6 +124,32 @@ ggplot(df, aes(x = factor(mnth), y = cnt)) +
     y = "cnt"
   ) +
   theme_minimal()
+
+df$season_meteo <- ifelse(df$mnth %in% c(12, 1, 2), "Winter",
+                   ifelse(df$mnth %in% c(3, 4, 5), "Spring",
+                   ifelse(df$mnth %in% c(6, 7, 8), "Summer", "Autumn")))
+
+
+df$season_meteo <- factor(df$season_meteo, levels = c("Spring", "Summer", "Autumn", "Winter"))
+
+# 3. Plot
+ggplot(df, aes(x = factor(mnth), y = cnt, fill = season_meteo)) +
+  geom_boxplot(width = 0.3, outlier.shape = NA) +
+  scale_fill_manual(values = c(
+    "Spring" = "#7FC97F",
+    "Summer" = "#56B4E9",
+    "Autumn" = "#D55E00",
+    "Winter" = "#9999fC"
+  )) +
+  labs(
+    title = "Rentals by Month",
+    x = "Month",
+    y = "Rental Count (cnt)",
+    fill = "Season"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
 ggplot(df, aes(x = cnt, y = factor(mnth))) +
   geom_density_ridges(alpha = 0.7, scale = 1.2) +
   scale_x_continuous(limits = c(0, NA)) +
@@ -142,35 +178,52 @@ ggplot(prop_registered, aes(x = factor(mnth), y = prop)) +
 During the summer days the proportion of registered users drops. The maximum is in january exactly at the beginning of the year.
 
 ```{r}
-ggplot(df, aes(x = weather_f, y = cnt)) +
-  geom_boxplot(fill = "orange", outlier.shape = NA) +
+levels(df$weather_f)[levels(df$weather_f) == "Heavy Rain"] = "Light Snow/Rain"
+df$weather_f = droplevels(df$weather_f)
+
+df$weather_f = factor(df$weathersit, labels = c("Clear", "Cloudy/Mist", "Light Snow/Rain", "Heavy Rain"))
+levels(df$weather_f)[levels(df$weather_f) == "Heavy Rain"] = "Light Snow/Rain"
+df$weather_f = droplevels(df$weather_f)
+
+
+ggplot(df, aes(x = weather_f, y = cnt, fill = weather_f)) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = c(
+    "Clear" = "yellow", 
+    "Cloudy/Mist" = "lightgrey", 
+    "Light Snow/Rain" = "darkgrey"
+  )) +
   labs(
-    title = "Rentals by weather",
-    x = "Weather condition",
-    y = "cnt"
+    title = "Rentals by Weather Condition",
+    x = "Weather Condition",
+    y = "Rental Count (cnt)"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(legend.position = "none") 
 ```
 As we can imagine, worse is the weather, less rentals there will be.
 ```{r}
+hourly_avg_week <- aggregate(cnt ~ hr, data = df[df$workday_f == "Weekend/Holiday",], FUN = mean)
+hourly_avg_work <- aggregate(cnt ~ hr, data = df[df$workday_f == "Working day",], FUN = mean)
+
 
 hourly_avg_work$daytype <- "Working day"
-hourly_avg_week$daytype <- "Weekend / Holiday"
+hourly_avg_week$daytype <- "Weekend/Holiday"
+
 
 hourly_avg <- rbind(hourly_avg_work, hourly_avg_week)
 
-# plot
 ggplot(hourly_avg, aes(x = hr, y = cnt, color = daytype)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) +
+  scale_x_continuous(breaks = 0:23) +
   labs(
-    title = "Average rentals by hour",
-    x = "Hour",
-    y = "Average cnt in a day",
-    color = ""
+    title = "Average rentals by hour: Working Day vs Weekend",
+    x = "Hour of the Day",
+    y = "Average Count",
+    color = "Type of Day"
   ) +
   theme_minimal()
-
 
 ```
 
@@ -208,3 +261,63 @@ ggplot(hourly_avg, aes(x = hr, y = cnt, color = season)) +
 ```
 The data suggests that while commuting habits (hourly peaks) remain constant, the overall volume is heavily dictated by the time of year and weather conditions. Autumn provides the "sweet spot" for rentals, while Spring (or the early months of the year) represents the period of lowest engagement.
 
+
+```{r}
+df$yr_f = factor(df$yr, labels = c("2011","2012"))
+ggplot(df, aes(x = yr_f, y = cnt, fill = yr_f)) +
+  geom_boxplot(outlier.shape = NA) +
+  labs(
+    title = "Rentals by year",
+    x = "Year",
+    y = "cnt"
+  ) +
+  theme_minimal()
+```
+```{r}
+hourly_avg_week <- aggregate(cnt ~ hr, data = df[df$workday_f == "Weekend/Holiday",], FUN = mean)
+hourly_avg_work <- aggregate(cnt ~ hr, data = df[df$workday_f == "Working day",], FUN = mean)
+
+
+hourly_avg_work$daytype <- "Working day"
+hourly_avg_week$daytype <- "Weekend/Holiday"
+
+
+hourly_avg <- rbind(hourly_avg_work, hourly_avg_week)
+
+ggplot(hourly_avg, aes(x = hr, y = cnt, color = daytype)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_x_continuous(breaks = 0:23) +
+  labs(
+    title = "Average rentals by hour: Working Day vs Weekend",
+    x = "Hour of the Day",
+    y = "Average Count",
+    color = "Type of Day"
+  ) +
+  theme_minimal()
+
+```
+
+```{r studio}
+
+monthly_avg <- aggregate(cbind(casual, registered) ~ mnth, data = df, FUN = mean)
+
+monthly_avg$total <- monthly_avg$casual + monthly_avg$registered
+
+monthly_avg$prop_registered <- monthly_avg$registered / monthly_avg$total
+monthly_avg$prop_casual <- monthly_avg$casual / monthly_avg$total
+
+
+ggplot(monthly_avg, aes(x = factor(mnth))) +
+  geom_bar(aes(y = 1, fill = "Registered"), stat = "identity") +
+  geom_bar(aes(y = prop_casual, fill = "Casual"), stat = "identity") +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("Casual" = "green", "Registered" = "yellow")) +
+  labs(
+    title = "Proportion of Casual vs Registered Users by Month",
+    x = "Month",
+    y = "Percentage of Total Rentals",
+    fill = "User Type"
+  ) +
+  theme_minimal()
+```
