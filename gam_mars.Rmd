@@ -61,19 +61,19 @@ Confrontiamo tre modelli con complessità crescente:
 - **M3 (Poisson Interaction)**: Aggiungiamo l'interazione tra ora e giorno lavorativo.
 ```{r model-selection}
 # Basic GAM with linear effects (Poisson) - without smooth terms, we take the variables that were presented as significant in the classic linear models
-gam_1 <- gam(cnt ~ hr + temp + workday_f + weather_f + yr_f, family = poisson, data = train_data)
+gam_1 <- gam(cnt ~ hr + temp + workday_f + season_f + weather_f + yr_f, family = poisson, data = train_data)
 summary(gam_1)
 
 # GAM with spline smooth for hr and temp (Poisson) - captures non-linearity, cyclic cubic spline
-gam_2 <- gam(cnt ~ s(hr, bs = "cc", k = 24) + s(temp) + workday_f + weather_f+ yr_f, family = poisson, data = train_data)
+gam_2 <- gam(cnt ~ s(hr, bs = "cc", k = 24) + s(temp) + workday_f + season_f + weather_f+ yr_f, family = poisson, data = train_data)
 summary(gam_2)
 
 # GAM with hr-workingday interaction (Poisson) - hour effect depends on day type
-gam_3 <- gam(cnt ~ s(hr, bs = 'cc', by = workingday) + s(temp) + weather_f + yr_f, family = poisson, data = train_data)
+gam_3 <- gam(cnt ~ s(hr, bs = 'cc', k = 24, by = workday_f) + s(temp) + weather_f + season_f + yr_f, family = poisson, data = train_data)
 summary(gam_3)
 
 # GAM Negative Binomial with interaction - handles overdispersion in count data
-gam_nb <- gam(cnt ~ s(hr, bs = 'cc', by = workingday) + s(temp) + weather_f + yr_f, family = nb(), data = train_data)
+gam_nb <- gam(cnt ~ s(hr, bs = 'cc', k =24, by = workday_f) + s(temp) + weather_f + season_f + yr_f, family = nb(), data = train_data)
 summary(gam_nb)
 
 # AIC TABLE
@@ -114,7 +114,7 @@ plot(lm_full, main = "Diagnostica LM")
 
 ```{r gam-effects}
 # GAM NB con spline ciclica per hr - smooth ciclico per pattern orario 24h
-gam_final_ciclica <- gam(cnt ~ s(hr, bs = 'cc', k = 24) + weather_f + yr_f, family = nb(), data = train_data)
+gam_final_ciclica <- gam(cnt ~ s(hr, bs = 'cc', k = 24) + weather_f + season_f + yr_f, family = nb(), data = train_data)
 summary(gam_final_ciclica)
 
 gam_final_no <- gam(cnt ~ s(hr) + weather_f + yr_f, family = nb(), data = train_data)
@@ -131,7 +131,7 @@ plot(gam_final_no, select = 1, main = "Effetto Spline")
 # GAM NB con interazione hr-workday per superficie 3D - visualizza pattern differenziati questo xe best
 # senza anno
 gam_interaction <- gam(cnt ~ s(hr, bs = 'cc', k = 24, by = workday_f) + 
-                        s(temp) + weather_f, 
+                        s(temp) + weather_f + + season_f, 
                        family = nb(), data = train_data)
 summary(gam_interaction)
 
@@ -143,8 +143,7 @@ vis.gam(gam_interaction, view = c("hr", "temp"),
 ```{r}
 # questo xe best con l'anno
 gam_interaction_year <- gam(cnt ~ s(hr, bs = 'cc', k = 24, by = workday_f) + 
-                        s(temp) + weather_f + yr_f, 
-                       family = nb(), data = train_data)
+                        s(temp) + weather_f + season_f + yr_f, family = nb(), data = train_data)
 summary(gam_interaction_year)
 
 anova(gam_interaction, gam_interaction_year, test = "Chisq")
@@ -181,6 +180,17 @@ vis.gam(gam_interaction_year, view = c("hr", "temp"),
         main = "Superficie di Risposta: Ora vs Temperatura")
 
 ```
+
+```{r}
+gam_year_no_int <- gam(cnt ~ s(hr, bs = 'cc', k = 24) + 
+                        s(temp) + weather_f + season_f + yr_f, family = nb(), data = train_data)
+AIC(gam_year_no_int)
+# plot select
+par(mfrow = c(1, 2))
+plot(gam_year_no_int, select = 1, main = "Spline Ciclica (hr) senza Interazione")
+plot(gam_year_no_int, select = 2, main = "Spline (temp) senza Interazione")
+```
+
 
 # 3. Modelli Alternativi e Machine Learning
 
