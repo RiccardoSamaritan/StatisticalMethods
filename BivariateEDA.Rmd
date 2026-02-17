@@ -7,7 +7,6 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-setwd("~/STORAGE/UNI/MAGISTRALE/STAT METHODS/FINAL PROJECT/BikeSharing")
 
 library(corrplot)
 library(patchwork)
@@ -68,6 +67,7 @@ ggplot(df, aes(x = atemp, y = cnt)) +
 
 ```
 It is possible to see that there are two bands in the the feeling temperature where rental counts drop to lower value. This can suggest the interaction with other unknown variables. Due to the fact that temperatures are normalized between 0 and 1 those results are difficult to interpret. 
+
 ```{r}
 ggplot(df, aes(x = temp, y = atemp)) +
   geom_point(alpha = 0.2) +
@@ -115,6 +115,7 @@ ggplot(df, aes(x = season_f, y = cnt, fill = season_f)) +
   theme(legend.position = "none")
 ```
 The boxplot reveals that Autumn is the peak season for rentals, showing both the highest median and the highest overall volume. Spring consistently records the lowest rental counts with minimal variability, this can be caused by the interaction with other variables, like holidays or something else. While Summer and Winter show similar median levels, Summer exhibits a higher potential for peak demand.
+
 ```{r}
 ggplot(df, aes(x = factor(mnth), y = cnt)) +
   geom_boxplot(width = 0.15, fill = "orange", outlier.shape = NA) +
