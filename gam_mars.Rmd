@@ -35,7 +35,7 @@ df$yr_f = factor(df$yr, labels = c("2011","2012"))
 cat("Dataset dimensions:", dim(df), "\n")
 cat("Variables:", names(df), "\n")
 
-set.seed(6868)
+set.seed(6767)
 
 # Split 75% training, 25% test
 train_id = sample(1:nrow(df), 0.75*nrow(df))
@@ -348,3 +348,4 @@ new_data <- data.frame(
 predizione_test <- predict(gam_interaction_year, new_data, type = "response")
 print(predizione_test)
 ```
+
